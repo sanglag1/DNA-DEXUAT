@@ -1,0 +1,302 @@
+/* --- GLOBAL STYLES --- */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: #f8f9fa;
+    color: #212529;
+    line-height: 1.6;
+}
+
+/* --- HEADER & NAVIGATION --- */
+header.container-fluid {
+    border-bottom: 1px solid #dee2e6;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+}
+
+.nav a {
+    font-weight: 500;
+    color: #6c757d; /* Màu xám nhạt cho tab không active */
+    padding: 8px 16px;
+    border-bottom: 3px solid transparent; /* Thêm viền trong suốt để không bị giật layout */
+    transition: all 0.2s ease-in-out;
+}
+
+.nav a:hover {
+    color: #0d6efd; /* Đổi màu khi hover */
+}
+
+.nav a.active {
+    color: #0d6efd !important; /* Màu xanh đậm cho tab active */
+    font-weight: 600;
+    border-bottom-color: #0d6efd; /* Gạch chân màu xanh */
+    background-color: transparent; /* Bỏ màu nền */
+}
+
+
+/* --- MAIN CONTENT & LAYOUT --- */
+main.container {
+    max-width: 1600px;
+}
+
+h2, h4 {
+    color: #495057;
+}
+h4 {
+    margin-top: 1rem;
+    border-bottom: 1px solid #e9ecef;
+    padding-bottom: 0.5rem;
+}
+
+
+/* --- FORM STYLES --- */
+form label {
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+    display: block;
+}
+
+form input[type="number"], form input[type="text"] {
+    width: 100%;
+    padding: 0.25rem 0.75rem;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+form input[type="number"]:focus, form input[type="text"]:focus {
+    border-color: #80bdff;
+    outline: 0;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+.form-check-label {
+    margin-left: 0.5rem;
+}
+
+
+/* --- BUTTONS --- */
+.btn-primary {
+    font-weight: 500;
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+}
+
+
+/* --- LOGS PANEL & TABLES --- */
+#logs {
+    background-color: #fff;
+    border: 1px solid #dee2e6;
+    font-family: "SF Mono", "Courier New", monospace;
+    font-size: 0.9rem;
+    white-space: pre-wrap;
+    line-height: 1.25;
+    overflow-y: auto;
+    max-height: 65vh;
+    border-radius: 5px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+#logs table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1rem;
+    margin-bottom: 1rem;
+}
+
+#logs th, #logs td {
+    border: 1px solid #dee2e6 !important;
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    vertical-align: middle;
+}
+
+#logs th {
+    background-color: #f8f9fa;
+    font-weight: 500;
+}
+
+#logs .table-striped tbody tr:nth-of-type(odd) {
+    background-color: rgba(0, 0, 0, 0.03);
+}
+
+/* --- STATUS/TIMER DISPLAY --- */
+#status-display {
+    font-size: 0.9rem;
+    min-width: 180px;
+    text-align: left;
+}
+
+/* --- CUSTOM LOG ELEMENTS --- */
+#logs h4 {
+    margin-top: 1.5rem;
+    margin-bottom: 0.5rem;
+    font-size: 1.1rem;
+    color: #007bff;
+    border: none;
+}
+
+#logs hr {
+    border-top: 1px solid #dee2e6;
+    margin: 1rem 0;
+}
+
+/* --- RESPONSIVE LAYOUT --- */
+
+/* Large desktops (1400px+) */
+@media (min-width: 1400px) {
+    main.container {
+        max-width: 1800px;
+    }
+    
+    #logs {
+        max-height: 75vh;
+    }
+    
+    #handsontable-container {
+        height: 500px !important;
+    }
+}
+
+/* Standard desktops (1200px - 1399px) */
+@media (min-width: 1200px) and (max-width: 1399px) {
+    main.container {
+        max-width: 1400px;
+    }
+    
+    #logs {
+        max-height: 70vh;
+    }
+    
+    #handsontable-container {
+        height: 450px !important;
+    }
+}
+
+/* Laptops and small desktops (992px - 1199px) */
+@media (min-width: 992px) and (max-width: 1199px) {
+    main.container {
+        max-width: 1100px;
+    }
+    
+    #logs {
+        max-height: 60vh;
+        font-size: 0.85rem;
+    }
+    
+    #handsontable-container {
+        height: 380px !important;
+    }
+    
+    form input[type="number"], form input[type="text"] {
+        padding: 0.2rem 0.5rem;
+        font-size: 0.9rem;
+    }
+    
+    .btn-primary {
+        padding: 0.5rem 1rem;
+        font-size: 0.9rem;
+    }
+    
+    h2 {
+        font-size: 1.5rem;
+    }
+    
+    h4 {
+        font-size: 1.1rem;
+    }
+}
+
+/* Tablets and small laptops (768px - 991px) */
+@media (min-width: 768px) and (max-width: 991px) {
+    main.container {
+        max-width: 100%;
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+    
+    .row > .col-md-6 {
+        flex: 0 0 100%;
+        max-width: 100%;
+        margin-bottom: 1.5rem;
+    }
+    
+    #logs {
+        max-height: 50vh;
+        font-size: 0.8rem;
+    }
+    
+    #handsontable-container {
+        height: 350px !important;
+    }
+    
+    form input[type="number"], form input[type="text"] {
+        font-size: 0.9rem;
+    }
+}
+
+/* Mobile devices (< 768px) */
+@media (max-width: 767px) {
+    main.container {
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
+    }
+    
+    .row > .col-md-6 {
+        flex: 0 0 100%;
+        max-width: 100%;
+        margin-bottom: 1rem;
+    }
+    
+    #logs {
+        max-height: 40vh;
+        font-size: 0.75rem;
+    }
+    
+    #handsontable-container {
+        height: 300px !important;
+    }
+    
+    h2 {
+        font-size: 1.25rem;
+    }
+    
+    h4 {
+        font-size: 1rem;
+    }
+    
+    .btn-primary {
+        width: 100%;
+        padding: 0.6rem;
+    }
+    
+    header .nav {
+        flex-wrap: wrap;
+    }
+    
+    header .user-menu {
+        margin-top: 0.5rem;
+    }
+}
+
+/* Ensure Handsontable is responsive */
+/* Only master table should show scrollbar, clone layers (row headers, frozen columns) should hide scrollbar */
+.ht_master {
+    overflow-x: auto !important;
+}
+
+.ht_clone_left, .ht_clone_top, .ht_clone_top_left_corner {
+    overflow: hidden !important;
+}
+
+#handsontable-container {
+    width: 100% !important;
+    overflow-x: auto;
+}
+
+/* Responsive form grid adjustments */
+@media (max-width: 991px) {
+    .row .col-md-4,
+    .row .col-md-6 {
+        margin-bottom: 0.75rem;
+    }
+}

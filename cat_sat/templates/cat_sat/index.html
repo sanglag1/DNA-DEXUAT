@@ -1,0 +1,355 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-6">
+        <h2 class="text-primary" style="margin-top: 0;">Máy cắt tự động</h2>
+        <form id="optimizationForm" method="post" novalidate>
+            {% csrf_token %}
+
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        {{ form.length.label_tag }}
+                        {{ form.length }}
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        {{ form.te_dau_sat.label_tag }}
+                        {{ form.te_dau_sat }}
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        {{ form.blade_width.label_tag }}
+                        {{ form.blade_width }}
+                    </div>
+                </div>
+                <div class="col-md-6" id="factors-group">
+                    <div class="mb-3">
+                        {{ form.factors.label_tag }}
+                        {{ form.factors }}
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-12">
+                    <div class="form-check mb-3">
+                        {{ form.no_bundle_constraint }}
+                        {{ form.no_bundle_constraint.label_tag }}
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="mb-3">
+                        {{ form.time_limit_minutes.label_tag }}
+                        {{ form.time_limit_minutes }}
+                    </div>
+                </div>
+                <div class="col-md-3" id="max-manual-cuts-group">
+                    <div class="mb-3">
+                        {{ form.max_manual_cuts.label_tag }}
+                        {{ form.max_manual_cuts }}
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="mb-3">
+                        {{ form.max_stock_over.label_tag }}
+                        {{ form.max_stock_over }}
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="mb-3">
+                        {{ form.hao_hut_percent.label_tag }}
+                        {{ form.hao_hut_percent }}
+                    </div>
+                </div>
+            </div>
+
+            <h4 class="mt-3">Chi tiết các đoạn cắt:</h4>
+            <div id="handsontable-container" class="border rounded"></div>
+
+            <div class="button-container mt-3">
+                <button id="start-process" type="submit" class="btn btn-primary">Tìm
+                    phương án cắt sắt</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="col-md-6 d-flex flex-column">
+        <div class="d-flex justify-content-between align-items-center">
+            <div class="d-flex align-items-center">
+                <h2 class="text-secondary mb-0">Kết quả</h2>
+                <div id="status-display" class="text-primary fw-bold ms-3"></div>
+            </div>
+            <div class="d-flex gap-2">
+                <button id="export-excel-gd1" class="btn btn-success border" onclick="exportExcelGD1()"
+                    title="Xuất danh sách pattern GĐ1 ra Excel">
+                    📊 Excel GĐ1
+                </button>
+                <button id="print-log" class="btn btn-light border" onclick="printDiv()">In kết quả</button>
+            </div>
+        </div>
+        <div id="logs" class="border rounded p-3 bg-light"
+            style="flex-grow: 1; overflow-y: auto; white-space: pre-wrap; font-family: monospace;"></div>
+    </div>
+</div>
+
+
+<script>
+    const form = document.getElementById('optimizationForm');
+    const logOutput = document.getElementById('logs');
+    const startButton = document.getElementById("start-process");
+    const statusDisplay = document.getElementById("status-display");
+    const container = document.getElementById('handsontable-container');
+
+    // --- TOGGLE DISABLE TRƯỜNG BÓ SẮT ---
+    function toggleBundleFields() {
+        const noBundleCheckbox = document.getElementById('id_no_bundle_constraint');
+        const factorsInput = document.getElementById('id_factors');
+        const maxManualCutsInput = document.getElementById('id_max_manual_cuts');
+        const isChecked = noBundleCheckbox && noBundleCheckbox.checked;
+        if (factorsInput) {
+            factorsInput.disabled = isChecked;
+            factorsInput.style.opacity = isChecked ? '0.5' : '1';
+        }
+        if (maxManualCutsInput) {
+            maxManualCutsInput.disabled = isChecked;
+            maxManualCutsInput.style.opacity = isChecked ? '0.5' : '1';
+        }
+    }
+    // Khi load trang
+    document.addEventListener('DOMContentLoaded', toggleBundleFields);
+    // Khi thay đổi checkbox
+    const noBundleEl = document.getElementById('id_no_bundle_constraint');
+    if (noBundleEl) noBundleEl.addEventListener('change', toggleBundleFields);
+
+    // --- LƯU & KHÔI PHỤC TRẠNG THÁI FORM ---
+    form.addEventListener('input', (event) => {
+        if (event.target.name) {
+            localStorage.setItem(event.target.name, event.target.value);
+        }
+    });
+    // Lưu checkbox riêng (checkbox dùng change event + .checked)
+    form.addEventListener('change', (event) => {
+        if (event.target.type === 'checkbox' && event.target.name) {
+            localStorage.setItem(event.target.name, event.target.checked);
+        }
+    });
+    window.addEventListener('DOMContentLoaded', () => {
+        Array.from(form.elements).forEach((element) => {
+            if (element.name && localStorage.getItem(element.name)) {
+                if (element.type === 'checkbox') {
+                    element.checked = localStorage.getItem(element.name) === 'true';
+                } else {
+                    element.value = localStorage.getItem(element.name);
+                }
+            }
+        });
+        // Re-run toggle sau khi restore
+        toggleBundleFields();
+    });
+
+    // --- TÍCH HỢP HANDSONTABLE ---
+    let tableData = JSON.parse(localStorage.getItem('handsontable_data_cat_sat')); // Dùng key khác
+    if (!tableData) {
+        tableData = [
+            ['Sắt A', 500, 782],
+            ['Sắt B', 255, 1564],
+            ['Sắt C', 600, 1508],
+            ['Sắt D', 615, 1508]
+        ];
+    }
+
+    const hot = new Handsontable(container, {
+        data: tableData,
+        colHeaders: ['Tên sắt', 'Kích thước (mm)', 'SL Cần'], // Thêm cột Tên sắt
+        columns: [
+            { type: 'text' },        // Cột Tên sắt
+            { type: 'numeric' },     // Cột Kích thước
+            { type: 'numeric' }      // Cột SL Cần
+        ],
+        rowHeaders: true, width: '100%', height: 350,
+        licenseKey: 'non-commercial-and-evaluation',
+        minSpareRows: 1, contextMenu: true, stretchH: 'all',
+        afterChange: (changes, source) => {
+            if (source !== 'loadData') {
+                localStorage.setItem('handsontable_data_cat_sat', JSON.stringify(hot.getData()));
+            }
+        }
+    });
+
+    // --- WEBSOCKET & SUBMIT LOGIC ---
+    const appName = "{{ request.resolver_match.namespace }}";
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+    const socket = new WebSocket(wsProtocol + window.location.host + `/ws/${appName}/log/`);
+
+    socket.onopen = () => { logOutput.innerHTML = ""; console.log("WebSocket connected."); }
+    socket.onclose = () => console.log("WebSocket disconnected.");
+    socket.onerror = (error) => console.error("WebSocket error: ", error);
+
+    socket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        const message = data.message;
+        if (message.startsWith("TIMER_UPDATE::")) {
+            const parts = message.split('::');
+            const elapsed = parts[1];
+            const total = parts[2];
+            statusDisplay.innerText = `-> Thời gian: ${elapsed}s / ${total}s`;
+        } else if (message === "!CLEAR!") {
+            logOutput.innerHTML = "";
+        } else {
+            logOutput.insertAdjacentHTML('beforeend', message); // Sửa thành insertAdjacentHTML
+        }
+        logOutput.scrollTop = logOutput.scrollHeight;
+    };
+
+    // --- SỬA LOGIC SUBMIT ---
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        startButton.disabled = true;
+        statusDisplay.innerText = "Đang xử lý...";
+        logOutput.innerHTML = "";  // Xóa log cũ ngay khi bắt đầu
+        const pieces_data = hot.getData().filter(row => row.some(cell => cell !== null && cell !== '' && cell !== undefined));
+
+        const noBundleCheckbox = document.getElementById('id_no_bundle_constraint');
+        const noBundleConstraint = noBundleCheckbox ? noBundleCheckbox.checked : false;
+
+        const payload = {
+            length: parseInt(form.length.value),
+            te_dau_sat: parseInt(form.te_dau_sat.value),
+            blade_width: parseFloat(form.blade_width.value),
+            factors: form.factors.value,
+            time_limit_minutes: parseInt(form.time_limit_minutes.value),
+            max_manual_cuts: parseInt(form.max_manual_cuts.value),
+            max_stock_over: parseInt(form.max_stock_over.value),
+            hao_hut_percent: parseFloat(form.hao_hut_percent.value),
+            no_bundle_constraint: noBundleConstraint,
+            pieces_data: pieces_data
+        };
+
+        fetch("{% url 'cat_sat:optimize' %}", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+            body: JSON.stringify(payload),
+        })
+            .catch(error => {
+                console.error(error);
+                statusDisplay.innerText = "Đã xảy ra lỗi!";
+                logOutput.innerHTML += "Đã xảy ra lỗi khi gửi yêu cầu: " + error;
+            })
+            .finally(() => {
+                startButton.disabled = false;
+                statusDisplay.innerText = "";
+            });
+    });
+
+    // --- HÀM IN ---
+    function printDiv() {
+        let divContents = document.getElementById("logs").innerHTML;
+
+        const formDataPrint = {
+            length: form.length.value,
+            te_dau_sat: form.te_dau_sat.value,
+            blade_width: form.blade_width.value
+        };
+        const segment_sizes = hot.getData()
+            .map(row => row[1])
+            .filter(val => val !== null && val !== '')
+            .join(' ');
+
+        let screenWidth = window.screen.width;
+        let screenHeight = window.screen.height;
+
+        let printWindow = window.open('', '', `width=${screenWidth}, height=${screenHeight}, top=0, left=0`);
+        printWindow.document.open();
+        printWindow.document.write(`
+    <html>
+    <head>
+        <title>In cắt sắt</title>
+        <style>
+            body { font-family: Arial, sans-serif; }
+            h2 { color: #333; margin-bottom: 10px; }
+            table { 
+                width: 100%; 
+                border-collapse: collapse; 
+                font-size: 0.8rem; 
+                table-layout: fixed; 
+            }
+            th, td { 
+                border: 1px solid #ccc; 
+                padding: 5px; 
+                text-align: center; 
+                vertical-align: middle;
+                word-wrap: break-word; 
+            }
+            th { background-color: #f2f2f2; font-weight: bold; }
+            hr, h4, b { page-break-after: avoid; }
+        </style>
+    </head>
+    <body>
+        <h2>MCTĐ: Sắt ${formDataPrint.length}mm || Cắt ${segment_sizes} đoạn || Lưỡi ${formDataPrint.blade_width}mm || Tề đầu sắt ${formDataPrint.te_dau_sat}mm</h2>
+        ${divContents}
+    </body>
+    </html>
+`);
+        printWindow.document.close();
+        printWindow.print();
+    }
+
+    // --- XUẤT EXCEL GĐ1 ---
+    function exportExcelGD1() {
+        const btn = document.getElementById('export-excel-gd1');
+        btn.disabled = true;
+        btn.innerHTML = '⏳ Đang xuất...';
+
+        const pieces_data = hot.getData().filter(row => row.some(cell => cell !== null && cell !== '' && cell !== undefined));
+
+        const payload = {
+            length: parseInt(form.length.value),
+            te_dau_sat: parseInt(form.te_dau_sat.value),
+            blade_width: parseFloat(form.blade_width.value),
+            hao_hut_percent: parseFloat(form.hao_hut_percent.value),
+            pieces_data: pieces_data
+        };
+
+        fetch("{% url 'cat_sat:export_excel_phase1' %}", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+            body: JSON.stringify(payload),
+        })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(data => { throw new Error(data.message || 'Lỗi xuất Excel'); });
+                }
+                return response.blob();
+            })
+            .then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                // Lấy filename từ header nếu có
+                a.download = `KetQua_GD1_Sat${form.length.value}mm.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+            })
+            .catch(error => {
+                alert('❌ ' + error.message);
+                console.error(error);
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = '📊 Excel GĐ1';
+            });
+    }
+</script>
+{% endblock %}

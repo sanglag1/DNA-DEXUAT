@@ -1,0 +1,290 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-6">
+        <h2 class="text-primary" style="margin-top: 0;">Máy cắt laser</h2>
+        <form id="optimizationForm" method="post" novalidate>
+            {% csrf_token %}
+            <div class="mb-3">{{ form.stock_length.label_tag }} {{ form.stock_length }}</div>
+            <div class="mb-3">{{ form.max_waste_percentage.label_tag }} {{ form.max_waste_percentage }}</div>
+            <div class="mb-3">{{ form.max_surplus.label_tag }} {{ form.max_surplus }}</div>
+            <div class="mb-3">{{ form.time_limit_minutes.label_tag }} {{ form.time_limit_minutes }}</div>
+            <div class="form-check mb-3">{{ form.use_priority_constraint }} {{ form.use_priority_constraint.label_tag }}
+            </div>
+            <div class="mb-3">
+                {{ form.pattern_limit.label_tag }}
+                {{ form.pattern_limit }}
+                {% if form.pattern_limit.help_text %}
+                <small class="form-text text-muted d-block">{{ form.pattern_limit.help_text }}</small>
+                {% endif %}
+            </div>
+            <div class="form-check mb-3">{{ form.optimize_stock_length }} {{ form.optimize_stock_length.label_tag }}
+            </div>
+
+            <!-- Advanced settings for auto-optimize (shown when checkbox is ticked) -->
+            <div id="optimize-advanced-settings"
+                style="display: none; margin-left: 24px; padding: 10px; border-left: 3px solid #0d6efd; background-color: #f8f9fa;">
+                <small class="text-muted d-block mb-2"><strong>⚙️ Cài đặt nâng cao:</strong></small>
+                <div class="mb-2">
+                    {{ form.optimize_search_step.label_tag }}
+                    {{ form.optimize_search_step }}
+                    {% if form.optimize_search_step.help_text %}
+                    <small class="form-text text-muted d-block">{{ form.optimize_search_step.help_text }}</small>
+                    {% endif %}
+                </div>
+                <div class="mb-2">
+                    {{ form.optimize_pattern_limit.label_tag }}
+                    {{ form.optimize_pattern_limit }}
+                    {% if form.optimize_pattern_limit.help_text %}
+                    <small class="form-text text-muted d-block">{{ form.optimize_pattern_limit.help_text }}</small>
+                    {% endif %}
+                </div>
+<div class=" form-check mb-2\>
+ {{ form.optimize_stop_on_first }}
+ {{ form.optimize_stop_on_first.label_tag }}
+ {% if form.optimize_stop_on_first.help_text %}
+ <small class=\form-text text-muted d-block ms-4\>{{ form.optimize_stop_on_first.help_text }}</small>
+ {% endif %}
+</div>
+</div>
+<div class="form-check mb-3">{{ form.use_combined_mode }} {{ form.use_combined_mode.label_tag }} -->
+            <!-- <h4 class="mt-4">Chi tiết các đoạn cắt:</h4> -->
+            <div id="handsontable-container" class="border rounded"></div>
+            <div class="button-container mt-3">
+                <button id="start-process" type="submit" class="btn btn-primary">Tìm phương án cắt sắt</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="col-md-6 d-flex flex-column">
+        <div class="d-flex justify-content-between align-items-center">
+            <div class="d-flex align-items-center">
+                <h2 class="text-secondary mb-0">Kết quả</h2>
+                <div id="status-display" class="text-primary fw-bold ms-3"></div>
+            </div>
+            <button id="print-log" class="btn btn-light border" onclick="printDiv()">In kết quả</button>
+        </div>
+        <div id="logs" class="border rounded p-3 bg-light"
+            style="flex-grow: 1; overflow-y: auto; white-space: pre-wrap; font-family: monospace;"></div>
+    </div>
+</div>
+
+<script>
+    const form = document.getElementById('optimizationForm');
+    const logOutput = document.getElementById('logs');
+    const startButton = document.getElementById("start-process");
+    const statusDisplay = document.getElementById("status-display");
+    const container = document.getElementById('handsontable-container');
+
+    // --- LƯU & KHÔI PHỤC TRẠNG THÁI FORM ---
+    form.addEventListener('input', (event) => {
+        if (event.target.name) {
+            if (event.target.type === 'checkbox') {
+                localStorage.setItem(event.target.name, event.target.checked);
+            } else {
+                localStorage.setItem(event.target.name, event.target.value);
+            }
+        }
+    });
+
+    window.addEventListener('DOMContentLoaded', () => {
+        Array.from(form.elements).forEach((element) => {
+            if (element.name && localStorage.getItem(element.name)) {
+                const savedValue = localStorage.getItem(element.name);
+                if (element.type === 'checkbox') {
+                    element.checked = (savedValue === 'true');
+                } else {
+                    element.value = savedValue;
+                }
+            }
+        });
+
+        // Initialize advanced settings visibility
+        toggleOptimizeSettings();
+    });
+
+    // Toggle advanced settings when optimize_stock_length checkbox changes
+    const optimizeCheckbox = document.getElementById('id_optimize_stock_length');
+    const advancedSettings = document.getElementById('optimize-advanced-settings');
+
+    function toggleOptimizeSettings() {
+        if (optimizeCheckbox && advancedSettings) {
+            advancedSettings.style.display = optimizeCheckbox.checked ? 'block' : 'none';
+        }
+    }
+
+    if (optimizeCheckbox) {
+        optimizeCheckbox.addEventListener('change', toggleOptimizeSettings);
+    }
+
+    // --- TÍCH HỢP HANDSONTABLE ---
+    let tableData = JSON.parse(localStorage.getItem('handsontable_data'));
+    if (!tableData) {
+        tableData = [
+            ['Sắt A', 470, 3200, 1, true],
+            ['Sắt B', 460, 1600, 2, true],
+            ['Sắt C', 445, 3200, 4, true],
+            ['Sắt D', 430, 3200, 2, true],
+            ['Sắt E', 425, 1600, 1, true],
+            ['Sắt F', 190, 3200, 1, true],
+            ['Sắt G', 25, 3200, 0, true]
+        ];
+    } else {
+        // Ensure existing data has the new column
+        tableData = tableData.map(row => {
+            if (row.length < 5) {
+                const length = parseFloat(row[1]);
+                row.push(Number.isInteger(length));
+            }
+            return row;
+        });
+    }
+
+    const hot = new Handsontable(container, {
+        data: tableData,
+        colHeaders: ['Tên sắt', 'Kích thước (mm)', 'SL Cần', 'Priority', 'ĐOẠN CUỐI'],
+        columns: [
+            { type: 'text' },
+            { type: 'numeric' },
+            { type: 'numeric' },
+            { type: 'numeric' },
+            { type: 'checkbox', className: 'htCenter' }
+        ],
+        rowHeaders: true, width: '100%', height: 450, licenseKey: 'non-commercial-and-evaluation',
+        minSpareRows: 1, contextMenu: true, stretchH: 'all',
+        afterChange: (changes, source) => {
+            if (source !== 'loadData') {
+                localStorage.setItem('handsontable_data', JSON.stringify(hot.getData()));
+            }
+        }
+    });
+
+    // --- WEBSOCKET & SUBMIT LOGIC ---
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+    const socket = new WebSocket(wsProtocol + window.location.host + '/ws/cat_laser_roi/log/');
+    socket.onopen = () => { logOutput.innerHTML = ""; console.log("WebSocket connected."); }
+    socket.onclose = () => console.log("WebSocket disconnected.");
+    socket.onerror = (error) => console.error("WebSocket error: ", error);
+
+    socket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        const message = data.message;
+        if (message.startsWith("TIMER_UPDATE::")) {
+            const parts = message.split('::');
+            const elapsed = parts[1];
+            const total = parts[2];
+            statusDisplay.innerText = `-> Thời gian: ${elapsed}s / ${total}s`;
+        } else if (message.startsWith("TESTING_LENGTH::")) {
+            // Cập nhật field chiều dài cây sắt khi đang test
+            const testLength = message.split('::')[1];
+            const stockLengthInput = document.getElementById('id_stock_length');
+            if (stockLengthInput) {
+                stockLengthInput.value = testLength;
+                stockLengthInput.style.backgroundColor = '#ffffcc'; // Highlight màu vàng nhạt
+            }
+        } else if (message.startsWith("OPTIMAL_LENGTH::")) {
+            // Cập nhật field với chiều dài tối ưu (màu xanh)
+            const optimalLength = message.split('::')[1];
+            const stockLengthInput = document.getElementById('id_stock_length');
+            if (stockLengthInput) {
+                stockLengthInput.value = optimalLength;
+                stockLengthInput.style.backgroundColor = '#d4f1d4'; // Highlight màu xanh nhạt
+                stockLengthInput.style.fontWeight = 'bold';
+            }
+        } else if (message === "!CLEAR!") {
+            logOutput.innerHTML = "";
+            // Reset màu nền của input về bình thường
+            const stockLengthInput = document.getElementById('id_stock_length');
+            if (stockLengthInput) {
+                stockLengthInput.style.backgroundColor = '';
+                stockLengthInput.style.fontWeight = '';
+            }
+        } else {
+            logOutput.insertAdjacentHTML('beforeend', message);
+        }
+    };
+
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        startButton.disabled = true;
+        statusDisplay.innerText = "Đang xử lý...";
+        const tableData = hot.getData().filter(row => row.some(cell => cell !== null && cell !== '' && cell !== undefined));
+
+        // Helper function to safely parse integers with default values
+        const safeParseInt = (elementId, defaultValue) => {
+            const element = document.getElementById(elementId);
+            if (!element || !element.value) return defaultValue;
+            const parsed = parseInt(element.value);
+            return isNaN(parsed) ? defaultValue : parsed;
+        };
+
+        const payload = {
+            stock_length: safeParseInt('id_stock_length', 6000),
+            max_waste_percentage: parseFloat(document.getElementById('id_max_waste_percentage').value),
+            max_surplus: safeParseInt('id_max_surplus', 10),
+            max_total_surplus: safeParseInt('id_max_total_surplus', 1000),
+            use_priority_constraint: document.getElementById('id_use_priority_constraint').checked,
+            pattern_limit: safeParseInt('id_pattern_limit', 100000),
+            optimize_stock_length: document.getElementById('id_optimize_stock_length').checked,
+            optimize_search_step: safeParseInt('id_optimize_search_step', 10),
+            optimize_pattern_limit: safeParseInt('id_optimize_pattern_limit', 50000),
+            time_limit_minutes: safeParseInt('id_time_limit_minutes', 2),
+            pieces_data: tableData
+        };
+
+        console.log('Sending optimization request with payload:', payload);
+
+        fetch("{% url 'cat_laser_roi:run_optimization' %}", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+            body: JSON.stringify(payload),
+        })
+            .catch(error => {
+                console.error(error);
+                statusDisplay.innerText = "Đã xảy ra lỗi!";
+                logOutput.innerHTML += "Đã xảy ra lỗi khi gửi yêu cầu: " + error;
+            })
+            .finally(() => {
+                startButton.disabled = false;
+                statusDisplay.innerText = "";
+            });
+    });
+
+    function printDiv() {
+        let divContents = document.getElementById("logs").innerHTML;
+        const printableContents = divContents.replace(/\\n/g, '<br>');
+        const printWindow = window.open('', '', 'height=800,width=1200');
+        printWindow.document.write('<html><head><title>In Kết Quả</title>');
+        printWindow.document.write(`<style>
+            @media print {
+                @page {
+                    size: A4 landscape;
+                    margin: 1cm;
+                }
+            }
+            body { font-family: Arial, sans-serif; }
+            table { 
+                width: 100%; 
+                border-collapse: collapse; 
+                font-size: 0.8rem; 
+                table-layout: fixed; /* Giúp áp dụng độ rộng cột chính xác hơn */
+            }
+            th, td { 
+                border: 1px solid #ccc; 
+                padding: 5px; /* Giảm padding một chút */
+                text-align: center; 
+                vertical-align: middle;
+                word-wrap: break-word; /* Tự động xuống dòng nếu cần */
+            }
+            th { background-color: #f2f2f2; font-weight: bold; }
+            hr, h4, b { page-break-after: avoid; }
+        </style>`);
+        printWindow.document.write('</head><body>');
+        printWindow.document.write(printableContents);
+        printWindow.document.write('</body></html>');
+        printWindow.document.close();
+        setTimeout(() => { printWindow.print(); }, 250);
+    }
+</script>
+{% endblock %}

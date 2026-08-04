@@ -1,0 +1,477 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row">
+    <!-- ==================== CỘT TRÁI: Định mức + tham số ==================== -->
+    <div class="col-md-7">
+        <h2 class="text-primary" style="margin-top:0;">Đề xuất thanh sắt</h2>
+        <p class="text-muted small mb-3">
+            Nhập định mức sản phẩm và số bộ cần sản xuất. Hệ thống tính nhu cầu cắt theo từng công đoạn,
+            rồi đề xuất mua mỗi chiều dài thanh sắt bao nhiêu cây để tổng sắt mua ít nhất.
+        </p>
+
+        {% csrf_token %}
+
+        <div class="row">
+            <div class="col-md-3">
+                <div class="mb-3">
+                    <label class="form-label">Số bộ sản xuất</label>
+                    <input type="number" id="num_sets" min="1" class="form-control" value="{{ default_num_sets }}">
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="mb-3">
+                    <label class="form-label">Tề đầu sắt (mm)</label>
+                    <input type="number" id="trim" min="0" class="form-control" value="{{ default_trim }}">
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="mb-3">
+                    <label class="form-label">Hao hụt tối đa mỗi loại (%)</label>
+                    <input type="number" id="max_waste_pct" min="0" step="0.1" class="form-control" value="1">
+                    <small class="text-muted">Loại nào vượt ngưỡng sẽ được cảnh báo.</small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="mb-3">
+                    <label class="form-label">Thời gian chạy tối đa (3x phút)</label>
+                    <input type="number" id="time_limit_minutes" min="1" class="form-control" value="2">
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6">
+                <div class="mb-3">
+                    <label class="form-label">Cho phép chênh lệch (SL đoạn dư/mỗi cỡ)</label>
+                    <input type="number" id="max_surplus" min="0" class="form-control" value="10">
+                    <small class="text-muted">Cắt đủ nhu cầu, cho phép dư tối đa bấy nhiêu đoạn mỗi cỡ (đoạn dư = tồn kho, không tính vào hao hụt).</small>
+                </div>
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Các chiều dài thanh sắt cố định (mm)</label>
+            <input type="text" id="stock_lengths" class="form-control" value="{{ default_stock_lengths }}">
+            <small class="text-muted">Chỉ điền những chiều dài <b>thực sự mua được</b>. Cách nhau bởi khoảng trắng/dấu phẩy. VD: 5850 6000</small>
+        </div>
+
+        <div class="form-check mb-2">
+            <input type="checkbox" class="form-check-input" id="auto_scan">
+            <label class="form-check-label" for="auto_scan">Tự động tìm chiều dài cây sắt tối ưu (đặt sắt theo yêu cầu)</label>
+            <small class="form-text text-muted d-block">Khi TẮT: chỉ dùng các chiều dài cố định ở trên. Khi BẬT: quét thêm
+                khoảng dưới đây để tìm chiều dài tốt hơn — chậm hơn nhiều (cả trăm lần giải mỗi loại sắt), và
+                <b>chiều dài tìm được có thể không đặt mua được</b>. Dùng để cân nhắc đặt sắt theo yêu cầu, không phải để chốt đơn mua.</small>
+        </div>
+
+        <!-- Cài đặt nâng cao cho vét cạn — chỉ hiện khi tick checkbox ở trên -->
+        <div id="scan-advanced-settings"
+             style="display:none; margin-left:24px; padding:10px; border-left:3px solid #0d6efd; background-color:#f8f9fa;">
+            <small class="text-muted d-block mb-2"><strong>⚙️ Cài đặt nâng cao:</strong></small>
+            <div class="row">
+                <div class="col-md-4 mb-2">
+                    <label class="form-label">Dài tối thiểu (mm)</label>
+                    <input type="number" id="min_len" class="form-control" value="4000">
+                </div>
+                <div class="col-md-4 mb-2">
+                    <label class="form-label">Dài tối đa (mm)</label>
+                    <input type="number" id="max_len" class="form-control" value="12000">
+                </div>
+                <div class="col-md-4 mb-2">
+                    <label class="form-label">Bước dò (mm)</label>
+                    <input type="number" id="step" class="form-control" value="50">
+                    <small class="form-text text-muted">Bước càng nhỏ càng kỹ nhưng càng lâu (50mm ≈ 160 lần giải).</small>
+                </div>
+            </div>
+            <div class="form-check mb-1">
+                <input type="checkbox" class="form-check-input" id="stop_on_first">
+                <label class="form-check-label" for="stop_on_first">Dừng ngay khi đạt ngưỡng % (🚀 nhanh)</label>
+                <small class="form-text text-muted d-block">Dừng ở chiều dài ĐẦU TIÊN đạt ngưỡng thay vì quét hết dải —
+                    nhanh hơn nhiều nhưng chiều dài tìm được chỉ là "đạt yêu cầu", không phải tốt nhất.</small>
+            </div>
+        </div>
+
+        <div class="d-flex align-items-end justify-content-between mt-2 mb-2 flex-wrap gap-2">
+            <div>
+                <label class="form-label mb-1">Chọn sản phẩm (định mức)</label>
+                <div class="d-flex gap-2">
+                    <select id="product_select" class="form-select" style="min-width:260px;">
+                        <option value="">— Chọn sản phẩm —</option>
+                    </select>
+                    <button type="button" class="btn btn-outline-secondary" onclick="clearBom()">Xóa bảng</button>
+                </div>
+                <small class="text-muted">Demo: danh mục lấy tạm tại đây. Khi lên thật, ERP sẽ cấp định mức.</small>
+            </div>
+        </div>
+        <div id="bom-table" class="border rounded"></div>
+        <div class="mt-2 mb-3">
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="addRow()">+ Thêm dòng</button>
+            <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeRow()">− Xóa dòng đã chọn</button>
+        </div>
+
+        <div class="button-container">
+            <button id="btn-run" type="button" class="btn btn-primary" onclick="runOptimize()">Tính đề xuất</button>
+        </div>
+    </div>
+
+    <!-- ==================== CỘT PHẢI: Kết quả ==================== -->
+    <div class="col-md-5 d-flex flex-column">
+        <h2 class="text-secondary mb-3">Kết quả đề xuất</h2>
+        <div id="result-panel" class="border rounded p-3 bg-light" style="flex-grow:1; overflow-y:auto;">
+            <div class="text-muted">Nhập định mức rồi bấm <b>Tính đề xuất</b> để xem kết quả.</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ---------- Handsontable định mức ----------
+    // MOCK: danh mục sản phẩm (sau này ERP cấp). Bảng KHỞI TẠO TRỐNG khi vừa vào.
+    const PRODUCT_CATALOG = {{ product_catalog|safe }};
+    function blankRows(n) { return Array.from({ length: n }, () => ['', '', '', '', '', '']); }
+    // Ưu tiên khôi phục việc đang làm dở (localStorage); nếu chưa có -> bảng trống.
+    let bomData = JSON.parse(localStorage.getItem('de_xuat_bom') || 'null') || blankRows(8);
+    let lastSelectedRows = [];   // nhớ dòng đang chọn (để nút Xóa không bị mất selection)
+
+    const hot = new Handsontable(document.getElementById('bom-table'), {
+        data: bomData,
+        colHeaders: ['Tên mảnh', 'SL/bộ', 'Nguyên liệu', 'Quy cách', 'Dài cắt (mm)', 'SL/mảnh'],
+        columns: [
+            { type: 'text' },
+            { type: 'numeric' },
+            { type: 'text' },
+            { type: 'text' },
+            { type: 'numeric' },
+            { type: 'numeric' },
+        ],
+        rowHeaders: true,
+        width: '100%',
+        stretchH: 'all',            // kéo giãn cột vừa khít cột trái -> không cuộn, không cắt
+        autoColumnSize: false,      // không tự nới cột theo nội dung
+        colWidths: [95, 55, 85, 62, 85, 58],
+        height: 'auto',
+        minSpareRows: 0,
+        contextMenu: ['row_above', 'row_below', 'remove_row'],  // chuột phải để chèn/xóa dòng
+        licenseKey: 'non-commercial-and-evaluation',
+        afterChange: (changes, source) => { if (source !== 'loadData') saveBom(); },
+        afterRemoveRow: saveBom,
+        // Dòng mới (thêm bằng nút HOẶC chuột phải) -> tự điền SL/mảnh (cột 5) = 1
+        afterCreateRow: (index, amount) => {
+            for (let i = 0; i < (amount || 1); i++) {
+                if (!hot.getDataAtCell(index + i, 5)) hot.setDataAtCell(index + i, 5, 1);
+            }
+            saveBom();
+        },
+        // Nhớ dòng đang chọn ngay khi chọn, để nút Xóa dùng lại (tránh mất selection khi click nút)
+        afterSelectionEnd: (r1, c1, r2) => {
+            lastSelectedRows = [];
+            for (let r = Math.min(r1, r2); r <= Math.max(r1, r2); r++) lastSelectedRows.push(r);
+        },
+    });
+
+    function saveBom() {
+        // Bọc try/catch: Handsontable có thể fire callback trong lúc khởi tạo,
+        // khi biến `hot` chưa gán xong (TDZ) -> nuốt lỗi để không phá constructor.
+        try {
+            localStorage.setItem('de_xuat_bom', JSON.stringify(hot.getData()));
+        } catch (e) { /* hot chưa sẵn sàng, bỏ qua */ }
+    }
+    function addRow() {
+        const n = hot.countRows();
+        hot.alter('insert_row_below', n - 1);   // chèn dòng ở cuối
+        hot.setDataAtCell(n, 5, 1);             // cột SL/mảnh (index 5) mặc định = 1
+    }
+    function removeRow() {
+        // Ưu tiên selection hiện tại; nếu mất (do click nút) thì dùng dòng đã lưu
+        const rows = new Set();
+        const sel = hot.getSelected();
+        if (sel && sel.length) {
+            sel.forEach(([r1, , r2]) => {
+                for (let r = Math.min(r1, r2); r <= Math.max(r1, r2); r++) rows.add(r);
+            });
+        } else {
+            lastSelectedRows.forEach(r => rows.add(r));
+        }
+        if (!rows.size) {
+            alert('Hãy click vào SỐ THỨ TỰ dòng (cột trái) để chọn dòng, rồi bấm Xóa.');
+            return;
+        }
+        // Xóa TỪ DƯỚI LÊN để không lệch chỉ số
+        [...rows].sort((a, b) => b - a).forEach(r => hot.alter('remove_row', r, 1));
+        lastSelectedRows = [];
+        hot.deselectCell();
+        saveBom();
+    }
+
+    // ---------- MOCK: chọn sản phẩm -> đổ định mức vào bảng ----------
+    // (Khi lên ERP thật thì thay bằng fetch định mức từ API của ERP.)
+    (function initProductSelect() {
+        const sel = document.getElementById('product_select');
+        PRODUCT_CATALOG.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.id;
+            opt.textContent = p.name;
+            sel.appendChild(opt);
+        });
+        sel.addEventListener('change', () => {
+            const p = PRODUCT_CATALOG.find(x => x.id === sel.value);
+            if (!p) return;
+            // deep copy để không sửa nhầm mock gốc
+            hot.loadData(p.bom.map(r => r.slice()));
+            saveBom();
+        });
+    })();
+
+    function clearBom() {
+        hot.loadData(blankRows(8));
+        document.getElementById('product_select').value = '';
+        saveBom();
+    }
+
+    // ---------- Lưu & khôi phục các ô nhập (không bị reset khi refresh) ----------
+    const PERSIST_TEXT = ['num_sets', 'trim', 'max_waste_pct', 'max_surplus', 'time_limit_minutes', 'stock_lengths', 'min_len', 'max_len', 'step'];
+    const PERSIST_CHECK = ['auto_scan', 'stop_on_first'];
+    (function restoreInputs() {
+        PERSIST_TEXT.forEach(id => {
+            const v = localStorage.getItem('dx_' + id);
+            const el = document.getElementById(id);
+            if (v !== null && el) el.value = v;
+            if (el) el.addEventListener('input', e => localStorage.setItem('dx_' + id, e.target.value));
+        });
+        PERSIST_CHECK.forEach(id => {
+            const v = localStorage.getItem('dx_' + id);
+            const el = document.getElementById(id);
+            if (v !== null && el) el.checked = (v === 'true');
+            if (el) el.addEventListener('change', e => localStorage.setItem('dx_' + id, e.target.checked));
+        });
+    })();
+
+    // ---------- Bật/tắt panel cài đặt vét cạn theo checkbox (giống MC Laser) ----------
+    (function bindScanToggle() {
+        const cb = document.getElementById('auto_scan');
+        const panel = document.getElementById('scan-advanced-settings');
+        if (!cb || !panel) return;
+        const sync = () => { panel.style.display = cb.checked ? 'block' : 'none'; };
+        cb.addEventListener('change', sync);
+        sync();   // áp dụng ngay trạng thái vừa khôi phục từ localStorage
+    })();
+
+    // ---------- Gọi API tối ưu ----------
+    function getCsrf() {
+        const el = document.querySelector('[name=csrfmiddlewaretoken]');
+        return el ? el.value : '';
+    }
+
+    function fmt(n) { return Number(n).toLocaleString('vi-VN'); }
+    function readParams() {
+        return {
+            num_sets: document.getElementById('num_sets').value,
+            trim: document.getElementById('trim').value,
+            stock_lengths: document.getElementById('stock_lengths').value,
+            max_waste_pct: document.getElementById('max_waste_pct').value,
+            max_surplus: document.getElementById('max_surplus').value,
+            time_limit_minutes: document.getElementById('time_limit_minutes').value,
+            auto_scan: document.getElementById('auto_scan').checked,
+            stop_on_first: document.getElementById('stop_on_first').checked,
+            min_len: document.getElementById('min_len').value,
+            max_len: document.getElementById('max_len').value,
+            step: document.getElementById('step').value,
+        };
+    }
+    async function postJSON(url, body) {
+        const resp = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
+            body: JSON.stringify(body),
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+        return resp.json();
+    }
+
+    // ---------- Tính TUẦN TỰ từng loại sắt ----------
+    async function runOptimize() {
+        const btn = document.getElementById('btn-run');
+        const panel = document.getElementById('result-panel');
+        btn.disabled = true;
+        const p = readParams();
+
+        try {
+            const rows = hot.getData().filter(r => r && r.some(c => c !== null && c !== '' && c !== undefined));
+
+            // Bước 1: lấy danh sách các loại sắt
+            panel.innerHTML = '<div class="text-primary">⏳ Đang phân tích định mức...</div>';
+            const mData = await postJSON("{% url 'cat_sat:de_xuat_materials' %}",
+                { num_sets: p.num_sets, bom: rows });
+            if (mData.status !== 'success') { panel.innerHTML = `<div class="text-danger">❌ ${mData.message}</div>`; return; }
+            const materials = mData.materials;
+
+            // Khung kết quả: dòng tiến độ + bảng đề xuất + chi tiết
+            panel.innerHTML = `
+                <div id="dx-progress" class="alert alert-info py-2 mb-2"></div>
+                <h4 class="mb-2">🛒 Đề xuất mua (${p.num_sets} bộ)</h4>
+                <table class="table table-bordered bg-white align-middle mb-2">
+                    <thead class="table-primary"><tr>
+                        <th>Loại sắt</th><th class="text-center">Chiều dài mua</th>
+                        <th class="text-center">Số cây</th><th class="text-center">Hao hụt</th>
+                        <th class="text-center">Thời gian</th>
+                    </tr></thead><tbody id="dx-shop"></tbody>
+                </table>
+                <div id="dx-total" class="alert alert-secondary py-2 mb-3"></div>
+                <div id="dx-detail"></div>`;
+
+            let totalMm = 0, totalWaste = 0, totalStub = 0;
+            const tRunStart = performance.now();   // mốc đo tổng thời gian cả đơn
+
+            // Bước 2: lặp từng loại, cập nhật bảng dần
+            for (let i = 0; i < materials.length; i++) {
+                const m = materials[i];
+                const elapsed = (performance.now() - tRunStart) / 1000;
+                document.getElementById('dx-progress').innerHTML =
+                    `⏳ Đang tính loại ${i + 1}/${materials.length}: <b>${m.material}</b>...` +
+                    (i ? ` <span class="text-muted">(đã chạy ${fmtDur(elapsed)})</span>` : '');
+
+                let oData;
+                const tMat = performance.now();          // mốc đo riêng loại này
+                try {
+                    oData = await postJSON("{% url 'cat_sat:de_xuat_optimize_material' %}",
+                        Object.assign({ material: m.material, sizes: m.sizes, demands: m.demands }, p));
+                } catch (e) {
+                    appendShopRow(m.material, `<span class="text-danger">Lỗi: ${e.message}</span>`, '', '',
+                                  fmtDur((performance.now() - tMat) / 1000));
+                    continue;
+                }
+                const matSec = (performance.now() - tMat) / 1000;
+                const r = oData.result;
+                if (!r || !r.feasible) {
+                    // Có best_achievable -> hiện luôn con số cắt được để người dùng biết
+                    // nên nâng ngưỡng lên bao nhiêu, thay vì chỉ báo "không đạt".
+                    const ba = r && r.best_achievable;
+                    appendShopRow(m.material,
+                        `<span class="text-danger">❌ ${r ? r.reason : 'lỗi'}</span>`,
+                        ba ? `<span class="text-muted">${ba.bars} cây</span>` : '',
+                        ba ? `<span class="text-muted">${ba.waste_pct.toFixed(2)}%</span>` : '',
+                        fmtDur(matSec));
+                    continue;
+                }
+                // dòng đề xuất mua
+                const badge = `<span class="badge bg-success fs-6">${r.best_length}mm</span>`;
+                const wCls = r.over_waste ? 'text-danger fw-bold' : '';
+                appendShopRow(m.material, badge,
+                    `<span class="fs-5 fw-bold">${r.total_bars}</span>`,
+                    `<span class="${wCls}">${r.waste_pct.toFixed(2)}%${r.over_waste ? ' ⚠' : ''}</span>`,
+                    fmtDur(matSec));
+
+                // cộng dồn tổng (khúc thừa = phế liệu, KHÔNG tính đoạn dư & mẩu nguyên)
+                totalMm += (r.total_purchased_mm || r.best_length * r.total_bars);
+                totalWaste += (r.total_waste_mm || 0);
+                totalStub += (r.mau_nguyen_mm || 0);
+                const buyM = (totalMm / 1000).toLocaleString('vi-VN', { maximumFractionDigits: 1 });
+                const wasteM = (totalWaste / 1000).toLocaleString('vi-VN', { maximumFractionDigits: 2 });
+                const stubM = (totalStub / 1000).toLocaleString('vi-VN', { maximumFractionDigits: 2 });
+                document.getElementById('dx-total').innerHTML =
+                    `<b>Tổng sắt mua:</b> ${buyM} m · ` +
+                    `<b>Tổng khúc thừa (phế liệu):</b> ${wasteM} m ` +
+                    `(${totalMm ? (totalWaste / totalMm * 100).toFixed(2) : 0}%)` +
+                    (totalStub ? ` · <b class="text-success">Mẩu nguyên nhập kho:</b> ${stubM} m` : '') +
+                    ` · <b>⏱ Thời gian tính:</b> ${fmtDur((performance.now() - tRunStart) / 1000)}`;
+
+                // chi tiết loại này
+                document.getElementById('dx-detail').insertAdjacentHTML('beforeend', renderDetail(m, r));
+            }
+
+            document.getElementById('dx-progress').className = 'alert alert-success py-2 mb-2';
+            document.getElementById('dx-progress').innerHTML =
+                `✅ Hoàn tất ${materials.length} loại sắt — tổng thời gian tính ` +
+                `<b>${fmtDur((performance.now() - tRunStart) / 1000)}</b>.`;
+        } catch (e) {
+            console.error(e);
+            panel.innerHTML = `<div class="text-danger">❌ Lỗi: ${e.message || e}</div>`;
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    function appendShopRow(name, lenHtml, barsHtml, wasteHtml, timeHtml) {
+        document.getElementById('dx-shop').insertAdjacentHTML('beforeend',
+            `<tr><td class="fw-bold">${name}</td><td class="text-center">${lenHtml}</td>
+             <td class="text-center">${barsHtml}</td><td class="text-center">${wasteHtml}</td>
+             <td class="text-center text-muted">${timeHtml || ''}</td></tr>`);
+    }
+
+    // Thời gian hiển thị dạng người đọc được: dưới 60s để nguyên giây, trên thì đổi ra phút.
+    function fmtDur(sec) {
+        if (sec < 60) return `${sec.toFixed(1)}s`;
+        const m = Math.floor(sec / 60), s = Math.round(sec - m * 60);
+        return `${m}p ${String(s).padStart(2, '0')}s`;
+    }
+
+    function renderDetail(m, r) {
+        const srcLabel = r.source === 'scan' ? 'vét cạn (đặt bất kỳ)' : 'chiều dài chuẩn';
+        let html = `<div class="card mb-3 shadow-sm"><div class="card-header bg-white py-2">
+            <b>${m.material}</b> — mua <b>${r.best_length}mm × ${r.total_bars} cây</b>, hao hụt
+            <span class="${r.over_waste ? 'text-danger fw-bold' : ''}">${r.waste_pct.toFixed(2)}%</span>
+            <span class="badge bg-secondary">${srcLabel}</span>
+            <div class="small text-muted">Tổng khúc thừa (phế liệu): <b>${fmt(Math.round(r.total_waste_mm || 0))} mm</b>
+                · Đoạn dư đã cắt: <b>${r.total_surplus_pieces || 0}</b> đoạn
+                ${r.mau_nguyen_mm ? `· <span class="text-success">Mẩu nguyên chưa cắt: <b>${fmt(Math.round(r.mau_nguyen_mm))} mm</b></span>` : ''}</div>`;
+
+        // Vượt ngưỡng mà chưa bật vét cạn -> chỉ cho người dùng biết còn cách cải thiện.
+        if (r.over_waste && !r.auto_scan) {
+            html += `<div class="small text-danger mt-1">⚠ Vượt ngưỡng ${r.max_waste_pct}% và mới chỉ xét các
+                chiều dài cố định. Bật <b>"Tự động tìm chiều dài cây sắt tối ưu"</b> để tìm chiều dài tốt hơn.</div>`;
+        }
+        // Dừng sớm -> chiều dài này chỉ "đạt yêu cầu", không phải tốt nhất trong dải.
+        if (r.scan_stopped_early) {
+            html += `<div class="small text-muted mt-1">🚀 Đã dừng ở chiều dài đầu tiên đạt ngưỡng — chưa quét hết dải,
+                có thể còn chiều dài tốt hơn. Tắt "Dừng ngay khi đạt ngưỡng" để quét đầy đủ.</div>`;
+        }
+
+        // Có chiều dài chưa chấm xong -> kết quả trên CHƯA chắc là tốt nhất, phải nói rõ.
+        if (r.timeout_count > 0) {
+            html += `<div class="small text-warning-emphasis mt-1">⏱ <b>${r.timeout_count}</b> chiều dài
+                chưa chấm xong do hết thời gian (${(r.timeout_lengths || []).join(', ')}${r.timeout_count > (r.timeout_lengths || []).length ? '…' : ''}mm)
+                — kết quả trên chưa chắc là tốt nhất. Tăng "Thời gian chạy" rồi chạy lại.</div>`;
+        }
+
+        html += `</div><div class="card-body p-0">`;
+
+        // So sánh chiều dài chuẩn + tối ưu bất kỳ
+        if (r.fixed_evals && r.fixed_evals.length) {
+            html += `<div class="p-2 bg-light border-bottom small"><b>So sánh chiều dài:</b><br>`;
+            html += r.fixed_evals.map(e =>
+                `${e.length}mm: ${e.waste_pct.toFixed(2)}% (${e.bars} cây)`).join(' &nbsp;|&nbsp; ');
+            if (r.scan_optimal)
+                html += `<br><i>Tối ưu nếu đặt bất kỳ: <b>${r.scan_optimal.length}mm</b> (${r.scan_optimal.waste_pct.toFixed(2)}%)</i>`;
+            html += `</div>`;
+        }
+
+        // Cần / cắt theo từng cỡ
+        html += `<table class="table table-sm table-bordered mb-0 text-center align-middle">
+            <thead class="table-light"><tr><th>Cỡ đoạn (mm)</th><th>Cần</th><th>Cắt ra</th><th>Dư</th></tr></thead><tbody>`;
+        for (let k = 0; k < r.cut_lengths.length; k++) {
+            const sp = r.produced[k] - r.demands[k];
+            html += `<tr><td>${r.cut_lengths[k]}</td><td>${fmt(r.demands[k])}</td>
+                <td>${fmt(r.produced[k])}</td><td style="${sp > 0 ? 'color:green' : ''}">${sp > 0 ? '+' + sp : sp}</td></tr>`;
+        }
+        html += `</tbody></table>`;
+
+        // Kế hoạch cắt
+        html += `<table class="table table-sm table-bordered mb-0 text-center align-middle"><thead class="table-light"><tr><th>Thanh</th>`;
+        for (const cl of r.cut_lengths) html += `<th>${cl}</th>`;
+        html += `<th>Số cây</th><th>HH/cây</th></tr></thead><tbody>`;
+        for (const pl of r.plan) {
+            // Cây cắt dở: tô xanh + ghi rõ mẩu nguyên để thợ biết dừng tay, không cắt hết.
+            const mn = pl.mau_nguyen_mm;
+            html += `<tr class="${mn ? 'table-success' : ''}"><td>${pl.stock_length}mm</td>`;
+            for (let k = 0; k < r.cut_lengths.length; k++) html += `<td>${pl.counts[k] > 0 ? pl.counts[k] : ''}</td>`;
+            html += `<td class="fw-bold">${pl.bars}</td><td>${pl.waste_per_bar}</td></tr>`;
+            if (mn) {
+                html += `<tr class="table-success"><td colspan="${r.cut_lengths.length + 3}"
+                    class="small text-start fst-italic">↳ Cây này <b>cắt dở</b> — dừng sau ${pl.counts.reduce((a, b) => a + b, 0)} đoạn,
+                    phần còn lại <b>${fmt(Math.round(mn))} mm</b> để nguyên, nhập kho (cắt được cỡ bất kỳ).</td></tr>`;
+            }
+        }
+        html += `</tbody></table></div></div>`;
+        return html;
+    }
+</script>
+{% endblock %}

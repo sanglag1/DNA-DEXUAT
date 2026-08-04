@@ -1,0 +1,100 @@
+diff --git a/cat_sat/optimization_logic.py b/cat_sat/optimization_logic.py
+index 0000000..1111111 100644
+--- a/cat_sat/optimization_logic.py
++++ b/cat_sat/optimization_logic.py
+@@
+ class SteelCuttingOptimizer:
+     # ... ( __init__ giữ nguyên, vẫn nhận time_limit_seconds ) ...
+     def __init__(self, length, te_dau_sat, segment_sizes, demands, blade_width, factors, max_manual_cuts, max_stock_over, time_limit_seconds=30.0): # <-- THÊM time_limit_seconds
+@@
+         self.time_limit_seconds = time_limit_seconds  # <-- THÊM MỚI
++        # Giới hạn để tránh phình mô hình
++        self.max_patterns_gd2 = 800        # tối đa pattern đưa sang GĐ2
++        self.topk_by_obj = 2000            # giới hạn pattern giữ lại sau GĐ1 (top-k)
+@@
+     def _solve_single_bar_batch(self, max_solutions=1000, time_limit_sec=None): # <-- Sửa: bỏ giá trị time_limit_sec
+@@
+-        solver = cp_model.CpSolver()
+-        solver.parameters.enumerate_all_solutions = True
+-        solver.parameters.log_search_progress = True
+-        
+-        # --- THAY ĐỔI: Bỏ time limit ---
+-        # solver.parameters.max_time_in_seconds = float(self.time_limit_seconds) # <-- BỎ DÒNG NÀY
+-        
+-        solver.parameters.num_search_workers = 1
++        solver = cp_model.CpSolver()
++        solver.parameters.enumerate_all_solutions = True
++        solver.parameters.log_search_progress = False
++        # BẬT LẠI time limit cho GĐ1 (60% tổng thời gian)
++        tl = max(5.0, float(self.time_limit_seconds) * 0.6)
++        solver.parameters.max_time_in_seconds = tl
++        solver.parameters.num_search_workers = 1
+@@
+-        collector = SolutionAndLogCollector(
++        collector = SolutionAndLogCollector(
+             vars_x=vars_x,
+             seg_scaled=seg_scaled,
+             blade_scaled=blade_scaled,
+             scale=scale,
+             length=self.length,
+             te_dau_sat=self.te_dau_sat,
+             exclude_set=exclude_set,
+-            accept_at_most=max_solutions, # <-- Sẽ được set là 100,000 từ optimize_cutting
+-            print_every=100 # <-- In ít lại
++            accept_at_most=max_solutions,
++            print_every=200
+         )
+@@
+-        # --- THÊM MỚI: Log ---
+-        print(f"GĐ 1: Tìm thấy {len(collector.solutions)} patterns.<br>")
+-        return collector.solutions
++        sols = collector.solutions
++        # Giữ top-k theo obj_value để tránh phình
++        if len(sols) > self.topk_by_obj:
++            sols = sols[:self.topk_by_obj]
++        print(f"GĐ 1: Giữ {len(sols)} pattern sau khi cắt bớt theo top-k.<br>")
++        return sols
++
++    def _prune_patterns_for_stage2(self, sols, top_k=800):
++        """Giảm số pattern đưa qua GĐ2: ưu tiên hao hụt thấp, bỏ gần-trùng theo (sum(x), round(loss))."""
++        sols = sorted(sols, key=lambda t: t[0], reverse=True)
++        kept, seen = [], set()
++        for obj, x in sols:
++            loss_mm = self.length - obj
++            sig = (sum(x), int(round(loss_mm)))
++            if sig in seen:
++                continue
++            seen.add(sig)
++            kept.append((obj, x))
++            if len(kept) >= top_k:
++                break
++        print(f"GĐ 1 -> GĐ 2: Cắt xuống còn {len(kept)} pattern.<br>")
++        return kept
+@@
+     def optimize_cutting(self):
+@@
+-        self.solution_matrix = np.array([sol[1] for sol in self.solutions], dtype=int)
++        self.solution_matrix = np.array([sol[1] for sol in self.solutions], dtype=int)
++        # PRUNE trước khi vào GĐ2
++        self.solutions = self._prune_patterns_for_stage2(self.solutions, top_k=self.max_patterns_gd2)
++        self.solution_matrix = np.array([sol[1] for sol in self.solutions], dtype=int)
+         print("------------------------------------------------<br>")
+         print(f"THỰC TẾ LOAD {len(self.solution_matrix)} NGHIỆM<br>")
+         print("------------------------------------------------<br>")
+         return self.solutions
+@@
+     def optimize_distribution(self):
+         # --- THÊM MỚI: Log ---
+         print("<br>Bắt đầu GĐ 2: Phân phối bó...<br>")
+         if self.solution_matrix is None:
+             raise ValueError("Run optimize_cutting first to generate solution matrix.")
+ 
+         A = self.solution_matrix.T               # m x n
+         L = np.array([self.length - sol[0] for sol in self.solutions], dtype=int)
++        # Chặn mô hình quá lớn
++        n_patterns = A.shape[1]
++        if n_patterns > 2000:
++            raise ValueError(f"Quá nhiều pattern ({n_patterns}) ⇒ hãy giảm top-k/giới hạn trước khi vào GĐ2.")
+@@
+-        solver.parameters.num_search_workers = 8
++        solver.parameters.num_search_workers = 8

@@ -1,0 +1,37 @@
+# --- Môi trường ảo & bytecode ---
+myenv/
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# --- Dữ liệu chạy thật: KHÔNG đưa lên repo công khai ---
+db.sqlite3
+*.sqlite3
+data/
+pattern_cache/
+patterns_cache/
+logs/
+optimization_logs/
+*.log
+
+# --- File tĩnh do collectstatic sinh ra ---
+staticfiles/
+
+# --- Bí mật: tuyệt đối không commit ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- IDE / hệ điều hành ---
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# --- File tạm của Excel/Office khi đang mở ---
+~$*

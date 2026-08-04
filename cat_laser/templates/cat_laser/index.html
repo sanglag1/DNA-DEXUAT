@@ -1,0 +1,176 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row">
+    <!-- Logs bên trái -->
+    <div class="col-md-6">
+        <h2 class="text-primary" style="margin-top: 0;">Máy cắt laser</h2>
+        <form id="optimizationForm" method="post" novalidate>
+            {% csrf_token %}
+            {{ form.as_p }}
+            <div class="button-container">
+                <button id="start-process" type="submit" class="btn btn-primary button-start-stop btn-optimize">Tìm
+                    phương án cắt sắt</button>
+                <!-- <br>
+                <button id="stop-process" type="button" class="btn btn-danger button-start-stop btn-stop"
+                    onclick="stopServer()" style="display: none;">Dừng tìm phương án</button> -->
+            </div>
+        </form>
+
+    </div>
+
+    <!-- Logs bên phải -->
+    <div class="col-md-6 d-flex flex-column">
+        <div class="d-flex justify-content-between align-items-center">
+            <h2 class="text-secondary">Kết quả</h2>
+            <button id="print-log" class="btn btn-light border" onclick="printDiv()">In kết quả</button>
+        </div>
+        <div id="logs" class="border rounded p-3 bg-light"></div>
+    </div>
+</div>
+
+
+<script>
+    console.log("cat satttt")
+    const form = document.getElementById('optimizationForm');
+    const logOutput = document.getElementById('logs');
+    const startButton = document.getElementById("start-process");
+
+
+    // Tạo kết nối WebSocket
+    const appName = "{{ request.resolver_match.namespace }}";  // Lấy tên app từ Django
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+    const socket = new WebSocket(
+        wsProtocol + window.location.host + `/ws/${appName}/log/`
+    );
+
+    socket.onopen = function () {
+        console.log("WebSocket connection established.");
+    };
+
+    // Nhận log từ WebSocket và hiển thị
+    socket.onmessage = function (event) {
+        const data = JSON.parse(event.data);
+        message = data["message"];
+        if (message == "!CLEAR!") {
+            logOutput.innerHTML = "";// Append log
+        }
+        else { logOutput.innerHTML += message; }
+        logOutput.scrollTop = logOutput.scrollHeight;
+    };
+
+    socket.onclose = function () {
+        console.log("WebSocket connection closed.");
+    };
+
+    socket.onerror = function (error) {
+        console.error("WebSocket error: ", error);
+    };
+
+    // Lưu dữ liệu form vào localStorage mỗi khi có thay đổi
+    form.addEventListener('input', function () {
+        const formData = new FormData(form);
+
+        formData.forEach((value, key) => {
+            localStorage.setItem(key, value);
+        });
+    });
+
+    // Khi trang được tải lại, khôi phục dữ liệu từ localStorage
+    window.addEventListener('DOMContentLoaded', () => {
+        const formData = new FormData(form);
+
+        formData.forEach((value, key) => {
+            const savedValue = localStorage.getItem(key);
+            if (savedValue !== null) {
+                const field = form.querySelector(`[name="${key}"]`);
+                if (field) {
+                    field.value = savedValue;
+                }
+            }
+        });
+    });
+
+    form.addEventListener("keydown", function (event) {  // Xử lí trường hợp Kki nhấn nút Enter
+        if (event.key === "Enter") {
+            event.preventDefault(); // Ngăn không cho form tự động submit
+
+            startButton.click();
+        }
+    });
+
+    let formDataGlobal = {}; // Biến toàn cục để lưu dữ liệu form
+
+    form.addEventListener('submit', function (e) {
+        console.log("nhấn nút Tối ưu hóa")
+
+        startButton.disabled = true; // Disable button during processing
+        startButton.innerHTML = "Đang xử lý..."; // Change button text 
+
+        e.preventDefault();
+
+        logOutput.innerHTML = ""
+
+        formDataGlobal = {
+            length: parseInt(form.laser_length.value), // From ChoiceField
+            segment_sizes: form.laser_segment_sizes.value.split(/[\s,]+/).filter(Boolean).map(Number), // String, server will parse
+            demands: form.laser_demands.value.split(/[\s,\.]+/).filter(Boolean).map(Number), // String, server will parse
+            blade_width_mctd: parseFloat(form.laser_blade_width_mctd.value), // The selected *value* (e.g., "3.0")
+            max_stock_over: parseInt(form.laser_max_stock_over.value) // From IntegerField
+        };
+
+        fetch("{% url 'cat_laser:optimize_laser' %}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify(formDataGlobal),
+        })
+            .then(response => response.json())
+            .then(data => {
+                console.log(data);
+                if (data.status == "success") {
+                    startButton.disabled = false; // Disable button during processing
+                    startButton.innerHTML = "Tìm phương án cắt sắt"; // Change button text 
+                }
+
+
+            })
+            .catch(error => {
+                console.log(error)
+                startButton.disabled = false; // Disable button during processing
+                startButton.innerHTML = "Tìm phương án cắt sắt";
+            });
+    });
+
+
+    function printDiv() {
+        let divContents = document.getElementById("logs").innerText; // Lấy nội dung dạng text để giữ nguyên khoảng trắng
+        let screenWidth = window.screen.width;   // Lấy chiều rộng màn hình
+        let screenHeight = window.screen.height; // Lấy chiều cao màn hình
+
+        let printWindow = window.open('', '', `width=${screenWidth}, height=${screenHeight}, top=0, left=0`);
+        printWindow.document.open();
+        printWindow.document.write(`
+    <html>
+    <head>
+        <title>In cắt sắt</title>
+        <style>
+            body { font-family: Arial, sans-serif; }
+            h2 { color: #333; margin-bottom: 10px; }
+            pre { white-space: pre-wrap; font-size: 16px; word-wrap: break-word; line-height: 1.8; }
+        </style>
+    </head>
+    <body>
+        <h2>MC Laser || Sắt ${formDataGlobal.length}mm || Lưỡi MCTD ${formDataGlobal.blade_width_mctd}mm</h2>
+        <pre>${divContents}</pre>
+    </body>
+    </html>
+`);
+        printWindow.document.close();
+        printWindow.print();
+    }
+
+</script>
+{% endblock %}

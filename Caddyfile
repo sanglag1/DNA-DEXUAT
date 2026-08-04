@@ -1,0 +1,6 @@
+# Cat Sat IEA - Caddy Reverse Proxy
+# Uses :80 for IP-only access, change to domain for auto-SSL
+
+{$DOMAIN::80} {
+    reverse_proxy catsat_web:8000
+}

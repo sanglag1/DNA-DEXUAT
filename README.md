@@ -1,0 +1,127 @@
+# 🏭 Steel Bar Cutting Optimizer (`cat_sat_iea`)
+
+> Production-grade web application that solves the **1D Cutting Stock Problem** for steel bar nesting in a furniture manufacturing factory — replacing manual planning and **reducing raw-material waste from ~5–10% down to ~1%**.
+
+[![Django](https://img.shields.io/badge/Django-4.x-092E20?logo=django)](https://www.djangoproject.com/)
+[![Google OR-Tools](https://img.shields.io/badge/Google_OR--Tools-9.x-4285F4?logo=google)](https://developers.google.com/optimization)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-336791?logo=postgresql)](https://www.postgresql.org/)
+[![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub_Actions-2088FF?logo=githubactions)](https://github.com/features/actions)
+[![Deploy](https://img.shields.io/badge/Deploy-DigitalOcean-0080FF?logo=digitalocean)](https://www.digitalocean.com/)
+
+---
+
+## 📋 Problem
+
+In rattan/wicker furniture manufacturing, steel frames are cut from standard-length bars (5.85 m and 6 m). Before this tool:
+
+- **Manual planning** by production supervisors was slow and error-prone
+- **5–10% of raw steel was wasted** as unusable offcuts per batch
+- No systematic batching across different product SKUs sharing the same steel spec
+- Laser-cutter mechanical constraints (≥60 mm clamp remainder) were often ignored, causing jams
+
+## 💡 Solution
+
+A **Django web application** that automatically computes optimal cutting patterns using **Operations Research** algorithms:
+
+### Algorithm & Optimization
+- Formulated as a **Mixed-Integer Programming (MIP)** model for the classical 1D Bin Packing / Cutting Stock problem
+- Initially prototyped with **Gurobi Optimization** (commercial solver)
+- **Fully re-implemented using Google OR-Tools** — eliminating ~$12,000/year license costs while maintaining solution quality
+- Encodes real-world **laser-cutter constraints**: minimum 60 mm clamp remainder at bar ends
+- **Intelligent batching**: automatically groups cut orders from **50+ product SKUs** that share the same steel type and thickness, maximizing material utilization per bar
+
+### Key Results
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Material waste | 5–10% per batch | **~1%** |
+| Planning time per batch | 30–60 min (manual) | **< 1 min** (automated) |
+| Monthly steel cost savings | — | **~15–20% reduction** |
+| License cost | $12k/yr (Gurobi) | **$0** (OR-Tools) |
+| Users served | 1 (supervisor) | **Multi-user** (production team) |
+
+### Factory Scale
+- **120-worker factory** producing rattan/wicker furniture for export
+- Processes cutting plans for **50+ product SKUs** daily
+- Handles both **CNC and laser cutting** machines
+
+---
+
+## 🏗️ Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| **Backend** | Python, Django |
+| **Optimization Engine** | Google OR-Tools (MIP solver) |
+| **Database** | PostgreSQL (migrated from SQLite for multi-user production) |
+| **Frontend** | Django Templates, HTML/CSS/JS |
+| **CI/CD** | GitHub Actions → DigitalOcean (automated deploy) |
+| **Containerization** | Docker |
+| **Data I/O** | Excel import/export (openpyxl) |
+
+---
+
+## 🚀 Features
+
+- **📊 Optimal Cutting Plans** — Input required segment lengths and quantities; get the optimal assignment of segments to standard bars with minimal waste
+- **⚙️ Constraint Handling** — Respects laser-cutter mechanical limits (clamp remainder ≥ 60 mm)
+- **📦 Cross-SKU Batching** — Groups orders from multiple products sharing the same steel spec/thickness for maximum utilization
+- **📈 Waste Visualization** — View per-bar utilization, total waste percentage, and savings summary
+- **📥 Excel Import/Export** — Operators upload cut lists from Excel; download optimized plans back to Excel for the shop floor
+- **👥 Multi-User** — PostgreSQL backend supports concurrent access by the production team
+- **🔄 CI/CD** — Automated testing and deployment via GitHub Actions to DigitalOcean
+
+---
+
+## 📐 How It Works
+
+```
+┌─────────────────┐     ┌──────────────────────┐     ┌─────────────────┐
+│   Excel Upload   │────▶│   Django Web App      │────▶│  Cutting Plans   │
+│  (cut list per   │     │                      │     │  (optimized bar  │
+│   product SKU)   │     │  ┌────────────────┐  │     │   assignments)   │
+│                  │     │  │  Google OR-Tools │  │     │                 │
+│                  │     │  │  MIP Solver      │  │     │  ▶ Excel export │
+│                  │     │  └────────────────┘  │     │  ▶ Visual report │
+└─────────────────┘     └──────────────────────┘     └─────────────────┘
+```
+
+1. **Input**: Upload Excel files with required segment lengths, quantities, and steel spec
+2. **Batch**: System groups compatible orders (same steel type + thickness)
+3. **Optimize**: OR-Tools MIP solver finds the cutting pattern that minimizes the number of standard bars used
+4. **Constrain**: Solution respects the 60 mm minimum clamp remainder at bar ends
+5. **Output**: Downloadable Excel with per-bar cutting instructions for shop floor operators
+
+---
+
+## 🛠️ Development & Deployment
+
+```bash
+# Clone the repository
+git clone https://github.com/vuongcris4/cat_sat_iea.git
+cd cat_sat_iea
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Set up PostgreSQL database
+python manage.py migrate
+
+# Run the development server
+python manage.py runserver
+```
+
+**Production deployment** is automated via GitHub Actions:
+- Push to `main` → automated tests → deploy to DigitalOcean droplet
+
+---
+
+## 📄 License
+
+This project was developed as part of a digital transformation internship at Import-Export Asia Co., Ltd.
+
+---
+
+## 👤 Author
+
+**Duy-Vuong Tran** — [GitHub](https://github.com/vuongcris4) · [LinkedIn](https://www.linkedin.com/in/vuongcris4/)

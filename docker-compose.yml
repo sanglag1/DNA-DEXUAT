@@ -1,0 +1,66 @@
+# ============================================
+# Cat Sat IEA - Docker Compose Production
+# ============================================
+# Usage:
+#   Build & Run:  docker-compose up -d --build
+#   View logs:    docker-compose logs -f
+#   Stop:         docker-compose down
+#   Rebuild:      docker-compose up -d --build
+# ============================================
+
+services:
+  # Redis for Django Channels (WebSocket)
+  redis:
+    image: redis:7-alpine
+    container_name: catsat_redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - catsat_network
+
+  # Django Application
+  web:
+    build: .
+    container_name: catsat_web
+    restart: unless-stopped
+    ports:
+      - "18080:8000"  # Host:Container (expose on unusual port)
+    environment:
+      - DJANGO_SETTINGS_MODULE=iea_project.settings
+      - REDIS_HOST=redis
+      - DEBUG=True   # DEV: bật để KHÔNG cache template + hiện trang lỗi chi tiết
+    volumes:
+      # DEV: mount toàn bộ source -> sửa file là thấy ngay, KHÔNG cần rebuild
+      - .:/app
+      # Persist data (mount cụ thể, override lên .:/app phía trên)
+      - ./data/patterns_cache:/app/patterns_cache
+      - ./data/db.sqlite3:/app/db.sqlite3
+      - ./data/logs:/app/logs  # Persistent logs
+    # DEV: dùng runserver để AUTO-RELOAD cả Python lẫn template (thay daphne trong entrypoint).
+    # WebSocket vẫn chạy vì 'daphne' đứng đầu INSTALLED_APPS.
+    # Production KHÔNG dùng file này (dùng docker-compose.prod.yml) nên không bị ảnh hưởng.
+    entrypoint: []
+    command: sh -c "python manage.py migrate --noinput && python manage.py runserver 0.0.0.0:8000"
+    depends_on:
+      - redis
+    networks:
+      - catsat_network
+
+  # Cloudflare Tunnel (optional - uncomment to enable)
+  # cloudflared:
+  #   image: cloudflare/cloudflared:latest
+  #   container_name: catsat_tunnel
+  #   restart: unless-stopped
+  #   command: tunnel run
+  #   environment:
+  #     - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+  #   networks:
+  #     - catsat_network
+
+networks:
+  catsat_network:
+    driver: bridge
+
+volumes:
+  redis_data:

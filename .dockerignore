@@ -1,0 +1,37 @@
+# Docker
+.git
+.gitignore
+.idea
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Virtual environment
+myenv/
+venv/
+env/
+.env
+
+# IDE
+.vscode/
+*.swp
+*.swo
+
+# Test files
+*.log
+*.patch
+
+# Large cache files (use volume mount instead)
+patterns_cache/
+data/
+
+# Development files
+*.ipynb
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db
