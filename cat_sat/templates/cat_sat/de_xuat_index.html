@@ -293,6 +293,7 @@
         const panel = document.getElementById('result-panel');
         btn.disabled = true;
         const p = readParams();
+        let ticker = null;      // đồng hồ đếm giờ, dọn ở finally
 
         try {
             const rows = hot.getData().filter(r => r && r.some(c => c !== null && c !== '' && c !== undefined));
@@ -321,13 +322,20 @@
             let totalMm = 0, totalWaste = 0, totalStub = 0;
             const tRunStart = performance.now();   // mốc đo tổng thời gian cả đơn
 
+            // Đồng hồ chạy liên tục trong lúc chờ. Trước đây chỉ ghi thời gian tại
+            // thời điểm bắt đầu mỗi loại rồi đứng yên, nên loại nào chạy vài phút thì
+            // người dùng tưởng hệ thống treo.
+            ticker = setInterval(() => {
+                const el = document.getElementById('dx-elapsed');
+                if (el) el.textContent = `— đã chạy ${fmtDur((performance.now() - tRunStart) / 1000)}`;
+            }, 200);
+
             // Bước 2: lặp từng loại, cập nhật bảng dần
             for (let i = 0; i < materials.length; i++) {
                 const m = materials[i];
-                const elapsed = (performance.now() - tRunStart) / 1000;
                 document.getElementById('dx-progress').innerHTML =
-                    `⏳ Đang tính loại ${i + 1}/${materials.length}: <b>${m.material}</b>...` +
-                    (i ? ` <span class="text-muted">(đã chạy ${fmtDur(elapsed)})</span>` : '');
+                    `⏳ Đang tính loại ${i + 1}/${materials.length}: <b>${m.material}</b>... ` +
+                    `<span id="dx-elapsed" class="text-muted"></span>`;
 
                 let oData;
                 const tMat = performance.now();          // mốc đo riêng loại này
@@ -386,6 +394,7 @@
             console.error(e);
             panel.innerHTML = `<div class="text-danger">❌ Lỗi: ${e.message || e}</div>`;
         } finally {
+            if (ticker) clearInterval(ticker);   // dừng đồng hồ dù chạy xong hay lỗi
             btn.disabled = false;
         }
     }
