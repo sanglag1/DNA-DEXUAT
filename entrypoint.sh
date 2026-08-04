@@ -17,6 +17,17 @@ fi
 echo "Running migrations..."
 python manage.py migrate --noinput
 
+# Tạo tài khoản quản trị nếu có khai báo biến môi trường.
+# Cần cho các dịch vụ không cho truy cập shell (vd gói Free của Render).
+# Django đọc thẳng DJANGO_SUPERUSER_USERNAME / _EMAIL / _PASSWORD.
+# Đã tồn tại thì lệnh báo lỗi -> nuốt đi để không chặn khởi động.
+if [ -n "${DJANGO_SUPERUSER_USERNAME}" ] && [ -n "${DJANGO_SUPERUSER_PASSWORD}" ]; then
+    echo "Ensuring superuser '${DJANGO_SUPERUSER_USERNAME}' exists..."
+    python manage.py createsuperuser --noinput 2>/dev/null \
+        && echo "Superuser created." \
+        || echo "Superuser already exists, skipping."
+fi
+
 # Collect static files
 echo "Collecting static files..."
 python manage.py collectstatic --noinput
