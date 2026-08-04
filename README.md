@@ -112,11 +112,36 @@ docs/                  # Tài liệu kỹ thuật, báo cáo đối chiếu
 
 ## Triển khai
 
-Repo này **chưa có cấu hình tự động triển khai**. Muốn đưa lên server cần:
+### Cách 1 — Render.com (nhanh nhất, hợp để demo)
 
-1. Chuẩn bị server (VPS/cloud) đã cài Docker
-2. Tạo file `.env` từ `.env.example`, điền `SECRET_KEY`, `ALLOWED_HOSTS`, mật khẩu CSDL
-3. Chạy `docker compose -f docker-compose.prod.yml up -d --build`
+Repo có sẵn [`render.yaml`](render.yaml). Các bước:
+
+1. Vào https://dashboard.render.com/blueprints → **New Blueprint Instance**
+2. Chọn repo này → Render đọc `render.yaml` và tự dựng 3 thành phần: web service, PostgreSQL, Redis
+3. Bấm **Apply**, chờ build xong (~5-10 phút lần đầu)
+4. Tạo tài khoản đăng nhập: vào tab **Shell** của web service, chạy
+   `python manage.py createsuperuser`
+
+> **Giới hạn gói miễn phí — đọc trước khi dùng cho việc thật:**
+> - App **ngủ sau 15 phút** không ai truy cập, lần vào lại mất khoảng 1 phút khởi động
+> - Chỉ **512MB RAM, CPU dùng chung** → phần tính toán tối ưu chậm hơn nhiều lần so với chạy trên máy. BOM nhiều cỡ đoạn nhiều khả năng chạy không nổi.
+> - PostgreSQL gói free hết hạn sau một thời gian (Render báo trước qua email)
+>
+> Dùng để xem giao diện và chạy BOM nhỏ. Việc thật nên dùng gói trả phí hoặc server riêng.
+
+### Cách 2 — Server riêng (VPS)
+
+1. Server đã cài Docker
+2. Tạo `.env` từ `.env.example`, điền `SECRET_KEY`, `ALLOWED_HOSTS`, mật khẩu CSDL
+3. `docker compose -f docker-compose.prod.yml up -d --build`
+
+### Biến môi trường đáng chú ý
+
+| Biến | Mặc định | Ý nghĩa |
+|---|---|---|
+| `SOLVER_WORKERS` | `8` | Số luồng bộ giải. Máy chủ CPU dùng chung nên đặt `2` — nhiều luồng tranh nhau còn chậm hơn. |
+| `REDIS_URL` | — | Dùng khi dịch vụ cấp Redis dạng URL (Render). Nếu trống thì dùng `REDIS_HOST`. |
+| `PORT` | `8000` | Cổng web. Render cấp động, local để trống. |
 
 **Lưu ý bảo mật:** không commit file `.env`. Các script `create_user.py`, `setup_otp.py` yêu cầu truyền mật khẩu qua biến môi trường, không ghi cứng trong code.
 

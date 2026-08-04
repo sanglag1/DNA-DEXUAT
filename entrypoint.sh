@@ -22,5 +22,7 @@ echo "Collecting static files..."
 python manage.py collectstatic --noinput
 
 # Start Daphne
-echo "Starting Daphne ASGI server..."
-exec daphne -b 0.0.0.0 -p 8000 --application-close-timeout 300 iea_project.asgi:application
+# Render (và nhiều PaaS khác) cấp cổng động qua biến PORT; local/Docker Compose thì
+# không có nên mặc định về 8000.
+echo "Starting Daphne ASGI server on port ${PORT:-8000}..."
+exec daphne -b 0.0.0.0 -p "${PORT:-8000}" --application-close-timeout 300 iea_project.asgi:application

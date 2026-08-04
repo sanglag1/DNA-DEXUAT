@@ -1,0 +1,75 @@
+# Cấu hình triển khai lên Render.com (Blueprint)
+#
+# Cách dùng: vào https://dashboard.render.com/blueprints -> New Blueprint Instance
+# -> chọn repo này. Render đọc file này và tự dựng 3 thành phần bên dưới.
+#
+# CẢNH BÁO VỀ GÓI MIỄN PHÍ (đọc kỹ trước khi dùng cho việc thật):
+#   - Web service ngủ sau 15 phút không ai truy cập, lần vào lại mất ~1 phút khởi động.
+#   - Chỉ 512MB RAM và CPU dùng chung -> phần TÍNH TOÁN TỐI ƯU sẽ chậm hơn nhiều lần
+#     so với chạy trên máy. BOM nhiều cỡ đoạn nhiều khả năng chạy không nổi.
+#     Dùng để DEMO giao diện và BOM nhỏ; việc thật nên dùng gói trả phí hoặc server riêng.
+#   - PostgreSQL gói free hết hạn sau một thời gian, Render sẽ báo trước qua email.
+
+databases:
+  - name: dna-dexuat-db
+    plan: free
+    databaseName: catsat
+    user: catsat
+
+services:
+  # Redis — dùng cho Django Channels (WebSocket của màn MC Laser)
+  - name: dna-dexuat-redis
+    type: keyvalue
+    plan: free
+    ipAllowList: []          # rỗng = chỉ cho truy cập nội bộ trong Render
+
+  - name: dna-dexuat
+    type: web
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    region: singapore        # gần Việt Nam nhất
+    healthCheckPath: /accounts/login/
+    envVars:
+      # Django tự sinh khoá bí mật, không cần điền tay
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "False"
+      # Render cấp tên miền dạng *.onrender.com
+      - key: ALLOWED_HOSTS
+        value: ".onrender.com,localhost"
+      - key: CSRF_TRUSTED_ORIGINS
+        value: "https://*.onrender.com"
+      # CPU dùng chung -> ít luồng lại nhanh hơn nhiều luồng tranh nhau
+      - key: SOLVER_WORKERS
+        value: "2"
+
+      # --- PostgreSQL: lấy tự động từ database khai báo ở trên ---
+      - key: DB_HOST
+        fromDatabase:
+          name: dna-dexuat-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: dna-dexuat-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: dna-dexuat-db
+          property: database
+      - key: DB_USER
+        fromDatabase:
+          name: dna-dexuat-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: dna-dexuat-db
+          property: password
+
+      # --- Redis: Render trả về URL đầy đủ, settings.py đã hỗ trợ REDIS_URL ---
+      - key: REDIS_URL
+        fromService:
+          name: dna-dexuat-redis
+          type: keyvalue
+          property: connectionString

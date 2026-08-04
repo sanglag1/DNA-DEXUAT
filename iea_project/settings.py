@@ -115,11 +115,14 @@ ASGI_APPLICATION = 'iea_project.asgi.application'
 
 REDIS_HOST = os.environ.get('REDIS_HOST', '127.0.0.1')
 
+# Render (và phần lớn dịch vụ cloud) cấp Redis dưới dạng URL đầy đủ chứ không tách
+# riêng host/port, nên ưu tiên REDIS_URL nếu có. Docker Compose vẫn dùng REDIS_HOST.
+REDIS_URL = os.environ.get('REDIS_URL')
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [(REDIS_HOST, 6379)],
+            "hosts": [REDIS_URL] if REDIS_URL else [(REDIS_HOST, 6379)],
         },
     },
 }

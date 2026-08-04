@@ -23,6 +23,7 @@ HAI CHỖ CỐ Ý KHÁC MC Laser (xem ghi chú tại chỗ để biết lý do):
 """
 
 import math
+import os
 import re
 from collections import defaultdict
 
@@ -56,6 +57,11 @@ MAX_SIZES_PER_BAR = 4
 # Ngân sách thời gian riêng cho khâu LIỆT KÊ pattern (tách khỏi thời gian giải IP).
 # Liệt kê thêm gần như không cải thiện nghiệm, nên không đáng để nó ăn cả phút.
 ENUM_TIME_LIMIT = 30.0
+
+# Số luồng cho bộ giải. Mặc định 8 (hợp với máy/server nhiều nhân), nhưng trên máy chủ
+# CPU dùng chung (vd gói free của PaaS) thì 8 luồng tranh nhau còn CHẬM hơn ít luồng —
+# đặt biến môi trường SOLVER_WORKERS=2 cho các môi trường đó.
+SOLVER_WORKERS = max(1, int(os.environ.get("SOLVER_WORKERS", "8")))
 
 
 def _scale(v):
@@ -394,7 +400,7 @@ def optimize_material(cut_lengths, demands, stock_lengths, trim, kerf,
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = time_limit
-    solver.parameters.num_search_workers = 8
+    solver.parameters.num_search_workers = SOLVER_WORKERS
 
     # Tối ưu 2 TẦNG TỪ ĐIỂN như MC Laser (thay cho hàm mục tiêu gộp trọng số cũ):
     #   Tầng 1: tối thiểu PHẾ LIỆU CẮT (đầu mẩu mỗi cây) — đoạn dư KHÔNG tính là phế.
