@@ -1,127 +1,128 @@
-# 🏭 Steel Bar Cutting Optimizer (`cat_sat_iea`)
+# DNA-DEXUAT — Đề xuất thanh sắt
 
-> Production-grade web application that solves the **1D Cutting Stock Problem** for steel bar nesting in a furniture manufacturing factory — replacing manual planning and **reducing raw-material waste from ~5–10% down to ~1%**.
+Ứng dụng web tính **vật tư sắt cần mua** từ định mức sản phẩm (BOM): nhập định mức và số bộ cần sản xuất, hệ thống tự tính mỗi loại sắt cần mua bao nhiêu cây, chiều dài nào, cắt theo kiểu nào để tổng sắt mua ít nhất.
 
-[![Django](https://img.shields.io/badge/Django-4.x-092E20?logo=django)](https://www.djangoproject.com/)
-[![Google OR-Tools](https://img.shields.io/badge/Google_OR--Tools-9.x-4285F4?logo=google)](https://developers.google.com/optimization)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-336791?logo=postgresql)](https://www.postgresql.org/)
-[![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub_Actions-2088FF?logo=githubactions)](https://github.com/features/actions)
-[![Deploy](https://img.shields.io/badge/Deploy-DigitalOcean-0080FF?logo=digitalocean)](https://www.digitalocean.com/)
+Bài toán nền tảng là **Cutting Stock 1 chiều**, giải bằng Google OR-Tools (CP-SAT).
 
 ---
 
-## 📋 Problem
+## Nguồn gốc
 
-In rattan/wicker furniture manufacturing, steel frames are cut from standard-length bars (5.85 m and 6 m). Before this tool:
+Repo này phát triển dựa trên hệ thống **Cắt sắt IEA** của [Duy-Vuong Tran](https://github.com/vuongcris4) — [cat_sat_iea](https://github.com/vuongcris4/cat_sat_iea), xây dựng cho nhà máy nội thất mây tre xuất khẩu.
 
-- **Manual planning** by production supervisors was slow and error-prone
-- **5–10% of raw steel was wasted** as unusable offcuts per batch
-- No systematic batching across different product SKUs sharing the same steel spec
-- Laser-cutter mechanical constraints (≥60 mm clamp remainder) were often ignored, causing jams
-
-## 💡 Solution
-
-A **Django web application** that automatically computes optimal cutting patterns using **Operations Research** algorithms:
-
-### Algorithm & Optimization
-- Formulated as a **Mixed-Integer Programming (MIP)** model for the classical 1D Bin Packing / Cutting Stock problem
-- Initially prototyped with **Gurobi Optimization** (commercial solver)
-- **Fully re-implemented using Google OR-Tools** — eliminating ~$12,000/year license costs while maintaining solution quality
-- Encodes real-world **laser-cutter constraints**: minimum 60 mm clamp remainder at bar ends
-- **Intelligent batching**: automatically groups cut orders from **50+ product SKUs** that share the same steel type and thickness, maximizing material utilization per bar
-
-### Key Results
-
-| Metric | Before | After |
-|--------|--------|-------|
-| Material waste | 5–10% per batch | **~1%** |
-| Planning time per batch | 30–60 min (manual) | **< 1 min** (automated) |
-| Monthly steel cost savings | — | **~15–20% reduction** |
-| License cost | $12k/yr (Gurobi) | **$0** (OR-Tools) |
-| Users served | 1 (supervisor) | **Multi-user** (production team) |
-
-### Factory Scale
-- **120-worker factory** producing rattan/wicker furniture for export
-- Processes cutting plans for **50+ product SKUs** daily
-- Handles both **CNC and laser cutting** machines
+Phần bổ sung trong repo này là module **Đề xuất thanh sắt** (`cat_sat/de_xuat_*`) và **API tích hợp ERP** (`api/`).
 
 ---
 
-## 🏗️ Tech Stack
+## Ba module
 
-| Layer | Technology |
-|-------|-----------|
-| **Backend** | Python, Django |
-| **Optimization Engine** | Google OR-Tools (MIP solver) |
-| **Database** | PostgreSQL (migrated from SQLite for multi-user production) |
-| **Frontend** | Django Templates, HTML/CSS/JS |
-| **CI/CD** | GitHub Actions → DigitalOcean (automated deploy) |
-| **Containerization** | Docker |
-| **Data I/O** | Excel import/export (openpyxl) |
+| Module | Đường dẫn | Vai trò |
+|---|---|---|
+| **MCTĐ** | `/cat_sat/` | Tối ưu cắt cho máy cắt tự động |
+| **MC Laser** | `/cat_laser_roi/` | Tối ưu cắt cho máy laser, có dò chiều dài cây tối ưu |
+| **Đề xuất thanh sắt** | `/cat_sat/de_xuat/` | Tính vật tư cần mua cho cả sản phẩm (module bổ sung) |
+
+Ba module dùng chung Django project và thư viện OR-Tools, nhưng **logic tối ưu độc lập** — sửa module này không ảnh hưởng module kia.
 
 ---
 
-## 🚀 Features
+## Module Đề xuất thanh sắt
 
-- **📊 Optimal Cutting Plans** — Input required segment lengths and quantities; get the optimal assignment of segments to standard bars with minimal waste
-- **⚙️ Constraint Handling** — Respects laser-cutter mechanical limits (clamp remainder ≥ 60 mm)
-- **📦 Cross-SKU Batching** — Groups orders from multiple products sharing the same steel spec/thickness for maximum utilization
-- **📈 Waste Visualization** — View per-bar utilization, total waste percentage, and savings summary
-- **📥 Excel Import/Export** — Operators upload cut lists from Excel; download optimized plans back to Excel for the shop floor
-- **👥 Multi-User** — PostgreSQL backend supports concurrent access by the production team
-- **🔄 CI/CD** — Automated testing and deployment via GitHub Actions to DigitalOcean
+### Bài toán 2 tầng
 
----
+1. **Bung định mức** — từ BOM sản phẩm và số bộ, tính ra nhu cầu số đoạn theo từng loại sắt (gom theo quy cách)
+2. **Tối ưu mua** — với mỗi loại sắt: chọn chiều dài cây và số cây sao cho tổng khúc thừa nhỏ nhất
 
-## 📐 How It Works
+### Điểm khác so với MC Laser
 
-```
-┌─────────────────┐     ┌──────────────────────┐     ┌─────────────────┐
-│   Excel Upload   │────▶│   Django Web App      │────▶│  Cutting Plans   │
-│  (cut list per   │     │                      │     │  (optimized bar  │
-│   product SKU)   │     │  ┌────────────────┐  │     │   assignments)   │
-│                  │     │  │  Google OR-Tools │  │     │                 │
-│                  │     │  │  MIP Solver      │  │     │  ▶ Excel export │
-│                  │     │  └────────────────┘  │     │  ▶ Visual report │
-└─────────────────┘     └──────────────────────┘     └─────────────────┘
-```
+| | MC Laser | Đề xuất thanh sắt |
+|---|---|---|
+| Mục đích | Tối ưu cắt 1 loại sắt đã có | Tính vật tư cần **mua** cho cả sản phẩm |
+| Giao hàng | Cho phép cắt **thiếu** (nợ hàng) | **Luôn đủ**, chỉ được dư |
+| Chọn chiều dài | Luôn vét cạn dải | Ưu tiên chiều dài **mua được**, chỉ vét cạn khi cần |
 
-1. **Input**: Upload Excel files with required segment lengths, quantities, and steel spec
-2. **Batch**: System groups compatible orders (same steel type + thickness)
-3. **Optimize**: OR-Tools MIP solver finds the cutting pattern that minimizes the number of standard bars used
-4. **Constrain**: Solution respects the 60 mm minimum clamp remainder at bar ends
-5. **Output**: Downloadable Excel with per-bar cutting instructions for shop floor operators
+### Một số cơ chế đáng chú ý
+
+- **Mẩu nguyên** — cây cuối cắt dở, phần còn lại để nguyên nhập kho thay vì cắt nốt thành đoạn thừa. Sắt đã cắt không nối lại được, để nguyên là giữ quyền lựa chọn cho đơn sau.
+- **Giới hạn 4 cỡ đoạn/cây** — vừa tăng tốc giải, vừa dễ thực thi ở xưởng. Đã kiểm chứng không làm mất nghiệm tối ưu trên BOM thật.
+- **Chuẩn hoá quy cách** — `10*20`, `10X20`, `10 × 20` quy về `10x20` để không tách nhầm thành nhiều lô mua.
+- **Tách bạch hết giờ với vô nghiệm** — solver hết thời gian và bài toán thật sự không có lời giải là hai việc khác nhau, không gộp chung.
+
+### Kiểm chứng
+
+Đối chiếu với MC Laser trên cùng dữ liệu (BOM ghế tình yêu, 500 bộ, 6 nhóm vật tư): **hao hụt khớp tuyệt đối ở cả 6 nhóm**. Hai thuật toán viết độc lập cho cùng kết quả.
 
 ---
 
-## 🛠️ Development & Deployment
+## Công nghệ
+
+| Thành phần | Dùng gì |
+|---|---|
+| Backend | Python 3.11, Django 5.1 |
+| Bộ giải tối ưu | Google OR-Tools 9.15 (CP-SAT) |
+| CSDL | PostgreSQL (production) / SQLite (dev) |
+| Realtime | Django Channels + Redis |
+| Frontend | Django Templates, Bootstrap, Handsontable |
+| Đóng gói | Docker Compose |
+
+---
+
+## Chạy trên máy
 
 ```bash
-# Clone the repository
-git clone https://github.com/vuongcris4/cat_sat_iea.git
-cd cat_sat_iea
+git clone https://github.com/sanglag1/DNA-DEXUAT.git
+cd DNA-DEXUAT
 
-# Install dependencies
+# Chạy bằng Docker (khuyến nghị)
+docker compose up -d --build
+
+# Mở http://localhost:18080
+```
+
+Tạo tài khoản:
+
+```bash
+docker exec catsat_web python manage.py createsuperuser
+```
+
+### Chạy không dùng Docker
+
+```bash
 pip install -r requirements.txt
-
-# Set up PostgreSQL database
 python manage.py migrate
-
-# Run the development server
 python manage.py runserver
 ```
 
-**Production deployment** is automated via GitHub Actions:
-- Push to `main` → automated tests → deploy to DigitalOcean droplet
+---
+
+## Cấu trúc
+
+```
+cat_sat/
+  de_xuat_logic.py     # Thuật toán Đề xuất thanh sắt (độc lập)
+  de_xuat_views.py     # API endpoints
+  optimization_logic.py# Logic MCTĐ (không đụng tới)
+cat_laser_roi/         # Module MC Laser (không đụng tới)
+api/                   # API public cho ERP tích hợp
+iea_project/           # Cấu hình Django
+docs/                  # Tài liệu kỹ thuật, báo cáo đối chiếu
+```
 
 ---
 
-## 📄 License
+## Triển khai
 
-This project was developed as part of a digital transformation internship at Import-Export Asia Co., Ltd.
+Repo này **chưa có cấu hình tự động triển khai**. Muốn đưa lên server cần:
+
+1. Chuẩn bị server (VPS/cloud) đã cài Docker
+2. Tạo file `.env` từ `.env.example`, điền `SECRET_KEY`, `ALLOWED_HOSTS`, mật khẩu CSDL
+3. Chạy `docker compose -f docker-compose.prod.yml up -d --build`
+
+**Lưu ý bảo mật:** không commit file `.env`. Các script `create_user.py`, `setup_otp.py` yêu cầu truyền mật khẩu qua biến môi trường, không ghi cứng trong code.
 
 ---
 
-## 👤 Author
+## Ghi công
 
-**Duy-Vuong Tran** — [GitHub](https://github.com/vuongcris4) · [LinkedIn](https://www.linkedin.com/in/vuongcris4/)
+Hệ thống gốc: **Duy-Vuong Tran** — [GitHub](https://github.com/vuongcris4)
+Module Đề xuất thanh sắt và API tích hợp: **Trịnh Xuân Sang**
