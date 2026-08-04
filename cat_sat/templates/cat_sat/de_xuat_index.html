@@ -383,7 +383,7 @@
                     ` · <b>⏱ Thời gian tính:</b> ${fmtDur((performance.now() - tRunStart) / 1000)}`;
 
                 // chi tiết loại này
-                document.getElementById('dx-detail').insertAdjacentHTML('beforeend', renderDetail(m, r));
+                document.getElementById('dx-detail').insertAdjacentHTML('beforeend', renderDetail(m, r, matSec));
             }
 
             document.getElementById('dx-progress').className = 'alert alert-success py-2 mb-2';
@@ -413,12 +413,13 @@
         return `${m}p ${String(s).padStart(2, '0')}s`;
     }
 
-    function renderDetail(m, r) {
+    function renderDetail(m, r, matSec) {
         const srcLabel = r.source === 'scan' ? 'vét cạn (đặt bất kỳ)' : 'chiều dài chuẩn';
         let html = `<div class="card mb-3 shadow-sm"><div class="card-header bg-white py-2">
             <b>${m.material}</b> — mua <b>${r.best_length}mm × ${r.total_bars} cây</b>, hao hụt
             <span class="${r.over_waste ? 'text-danger fw-bold' : ''}">${r.waste_pct.toFixed(2)}%</span>
             <span class="badge bg-secondary">${srcLabel}</span>
+            ${matSec !== undefined ? `<span class="badge bg-light text-dark border">⏱ ${fmtDur(matSec)}</span>` : ''}
             <div class="small text-muted">Tổng khúc thừa (phế liệu): <b>${fmt(Math.round(r.total_waste_mm || 0))} mm</b>
                 · Đoạn dư đã cắt: <b>${r.total_surplus_pieces || 0}</b> đoạn
                 ${r.mau_nguyen_mm ? `· <span class="text-success">Mẩu nguyên chưa cắt: <b>${fmt(Math.round(r.mau_nguyen_mm))} mm</b></span>` : ''}</div>`;
