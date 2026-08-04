@@ -14,8 +14,9 @@ data/
 pattern_cache/
 patterns_cache/
 logs/
-optimization_logs/
 *.log
+# LƯU Ý: optimization_logs/ là Django app trong INSTALLED_APPS, KHÔNG phải thư mục log
+# -> tuyệt đối không đưa vào đây
 
 # --- File tĩnh do collectstatic sinh ra ---
 staticfiles/
