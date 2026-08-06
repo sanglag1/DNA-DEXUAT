@@ -13,6 +13,11 @@ SECRET_KEY = os.environ.get(
 )
 
 DEBUG = os.environ.get('DEBUG', 'True').lower() in ('true', '1', 'yes')
+
+# API key kiểm tra header Authorization: Bearer <key> cho các endpoint tích hợp ERP
+# (xem api/views.py::require_api_key). Rỗng = endpoint từ chối MỌI request (fail-closed),
+# không phải mở public khi quên cấu hình.
+ERP_API_KEY = os.environ.get('ERP_API_KEY', '')
 DEBUG_PROPAGATE_EXCEPTIONS = True
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '*').split(',')

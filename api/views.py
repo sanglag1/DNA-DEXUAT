@@ -2,13 +2,36 @@
 API views cho hệ thống tích hợp ERP.
 Tất cả endpoint đều trả JSON, không giữ state.
 """
+import hmac
 import json
+from functools import wraps
+
 from django.conf import settings
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 
 from cat_sat.de_xuat_logic import list_material_groups, optimize_one_material
+
+
+def require_api_key(view_func):
+    """
+    Chặn request không có header `Authorization: Bearer <ERP_API_KEY>` đúng. Fail-closed:
+    ERP_API_KEY rỗng/chưa cấu hình -> từ chối luôn (không phải mở public khi quên set env).
+    Dùng hmac.compare_digest để tránh timing attack khi so sánh key.
+    """
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        expected = settings.ERP_API_KEY
+        auth_header = request.headers.get('Authorization', '')
+        provided = auth_header[len('Bearer '):] if auth_header.startswith('Bearer ') else ''
+        if not expected or not hmac.compare_digest(provided, expected):
+            return JsonResponse(
+                {"status": "error", "code": "UNAUTHORIZED", "message": "Thiếu hoặc sai API key"},
+                status=401,
+            )
+        return view_func(request, *args, **kwargs)
+    return wrapper
 
 
 def _to_float(v, default=0.0):
@@ -26,6 +49,7 @@ def _to_int(v, default=0):
 
 @csrf_exempt  # API không dùng session Django → bỏ CSRF check
 @require_http_methods(["POST"])
+@require_api_key
 def api_de_xuat_propose(request):
     """
     POST /api/v1/de_xuat/propose
