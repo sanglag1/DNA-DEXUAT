@@ -4,6 +4,7 @@ Tất cả endpoint đều trả JSON, không giữ state.
 """
 import hmac
 import json
+import re
 from functools import wraps
 
 from django.conf import settings
@@ -47,6 +48,38 @@ def _to_int(v, default=0):
     return int(round(_to_float(v, default)))
 
 
+def _normalize_material_key(k):
+    """Chuẩn hoá khoá vật tư giống HỆT cách de_xuat_logic.explode_bom() dựng `material` trong
+    group key (gộp khoảng trắng thừa) - PHẢI đồng bộ để khoá trong
+    max_waste_percentage_by_material khớp đúng group["material"] mà vòng lặp dưới so sánh."""
+    return re.sub(r"\s+", " ", str(k or "")).strip()
+
+
+def _parse_max_waste_pct_by_material(raw):
+    """
+    Sanitize `max_waste_percentage_by_material` từ request: chỉ giữ lại entry hợp lệ.
+
+    KHÔNG fuzzy/prefix match khoá không khớp - khớp nhầm lặng lẽ tệ hơn nhiều so với bỏ qua
+    và rơi về ngưỡng mặc định (max_waste_percentage) một cách có ghi chép (xem
+    resolved_max_waste_pct_by_group trong response - đó là chỗ duy nhất caller cần nhìn vào
+    để biết ngưỡng nào THỰC SỰ được áp, không nên đoán qua request đã gửi).
+    """
+    if not isinstance(raw, dict):
+        return {}
+    out = {}
+    for k, v in raw.items():
+        try:
+            pct = float(v)
+        except (TypeError, ValueError):
+            continue
+        if not (0 < pct <= 100):
+            continue
+        key = _normalize_material_key(k)
+        if key:
+            out[key] = pct
+    return out
+
+
 @csrf_exempt  # API không dùng session Django → bỏ CSRF check
 @require_http_methods(["POST"])
 @require_api_key
@@ -67,7 +100,14 @@ def api_de_xuat_propose(request):
       "stock_lengths": [5850, 6000],   // chỉ những chiều dài THỰC SỰ mua được
       "trim_start": 10,
       "blade_width": 1.0,
-      "max_waste_percentage": 1.0,
+      "max_waste_percentage": 1.0,   // ngưỡng MẶC ĐỊNH, áp cho mọi loại sắt không có ngưỡng riêng
+      // Ngưỡng RIÊNG cho từng loại sắt, ghi đè max_waste_percentage ở trên. KHOÁ phải khớp
+      // ĐÚNG giá trị `material` mà client gửi trong bom[] (sau khi gộp khoảng trắng thừa);
+      // khi client gửi spec rỗng thì khoá chính là chuỗi `material` đó. Khoá không khớp loại
+      // nào -> BỎ QUA lặng lẽ và dùng ngưỡng mặc định (xem resolved_max_waste_pct_by_group
+      // trong input_echo để biết ngưỡng nào THỰC SỰ được áp cho từng loại).
+      // Giá trị phải là số trong khoảng (0, 100]; ngoài khoảng đó bị bỏ qua.
+      "max_waste_percentage_by_material": {"200": 2.0, "300": 0.8},
       "max_surplus": 10,
       "auto_scan": false,        // bật vét cạn dải chiều dài (CHẬM: cả trăm lần giải)
       "stop_on_first": false,    // chỉ có tác dụng khi auto_scan=true: dừng ở chiều dài
@@ -159,6 +199,11 @@ def api_de_xuat_propose(request):
         trim_start = max(0.0, _to_float(body.get("trim_start", 10), 10))
         blade_width = max(0.0, _to_float(body.get("blade_width", 1.0), 1.0))
         max_waste_pct = _to_float(body.get("max_waste_percentage", 1.0), 1.0)
+        # Ngưỡng RIÊNG theo từng loại sắt (materialId -> %), ghi đè max_waste_pct cho đúng
+        # loại đó - xem docstring endpoint. Rỗng nếu client không gửi hoặc gửi sai định dạng.
+        max_waste_pct_by_material = _parse_max_waste_pct_by_material(
+            body.get("max_waste_percentage_by_material")
+        )
         max_surplus = max(0, _to_int(body.get("max_surplus", 10), 10))
         # Vét cạn dải chiều dài: TẮT mặc định (tốn thời gian nhất). stop_on_first chỉ
         # có tác dụng khi auto_scan bật.
@@ -178,14 +223,21 @@ def api_de_xuat_propose(request):
         # Bước 2: với MỖI loại sắt, cắt TRỘN tất cả cỡ trên CÙNG 1 chiều dài tối ưu
         # (đúng thuật toán production đang chạy trên UI de_xuat_index.html)
         results = []
+        resolved_max_waste_pct_by_group = {}
         for group in material_groups:
+            # Khoá group["material"] chính là chuỗi `material` client gửi trong bom[] (đã qua
+            # cùng phép chuẩn hoá whitespace) - so khớp trực tiếp với khoá đã sanitize ở trên.
+            group_max_waste_pct = max_waste_pct_by_material.get(
+                _normalize_material_key(group["material"]), max_waste_pct
+            )
+            resolved_max_waste_pct_by_group[group["material"]] = group_max_waste_pct
             res = optimize_one_material(
                 sizes=group["sizes"],
                 demands=group["demands"],
                 stock_lengths=stock_lengths,
                 trim=trim_start,
                 kerf=blade_width,
-                max_waste_pct=max_waste_pct,
+                max_waste_pct=group_max_waste_pct,
                 min_len=min_len,
                 max_len=max_len,
                 step=step,
@@ -217,7 +269,12 @@ def api_de_xuat_propose(request):
                     # Có giá trị khi loại sắt cắt được nhưng VƯỢT ngưỡng: {length, waste_pct, bars}
                     # -> client biết nên nâng max_waste_percentage lên bao nhiêu.
                     "best_achievable": res.get("best_achievable"),
-                    "reason": res.get("reason", "")
+                    "reason": res.get("reason", ""),
+                    # Ngưỡng THỰC SỰ đã dùng cho loại này (riêng hoặc mặc định) - thiếu field
+                    # này thì client không biết phải nới đúng ngưỡng nào khi báo vô nghiệm.
+                    "max_waste_pct_threshold": resolved_max_waste_pct_by_group.get(
+                        res.get("material", "")
+                    ),
                 })
                 continue
 
@@ -325,6 +382,12 @@ def api_de_xuat_propose(request):
                 "trim_start": trim_start,
                 "blade_width": blade_width,
                 "max_waste_percentage": max_waste_pct,
+                # Dict thô client gửi (đã sanitize) + ngưỡng THỰC SỰ áp cho từng loại sau khi
+                # so khớp - nếu khoá client gửi không khớp loại nào, dict dưới sẽ toàn giá trị
+                # mặc định dù dict trên không rỗng, đó là dấu hiệu key sai chứ không phải tính
+                # năng không hoạt động.
+                "max_waste_percentage_by_material": max_waste_pct_by_material,
+                "resolved_max_waste_pct_by_group": resolved_max_waste_pct_by_group,
                 "max_surplus": max_surplus,
                 "min_length": min_len,
                 "max_length": max_len,

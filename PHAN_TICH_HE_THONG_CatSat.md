@@ -1003,7 +1003,18 @@ Content-Type: application/json
                                         //   ⚠ Server làm tròn LÊN thành số nguyên (math.ceil) trước khi đưa
                                         //   vào solver — CP-SAT không nhận hệ số float trong constraint.
                                         //   VD: 1.2 -> 2, 2.5 -> 3. Nên truyền số nguyên để tránh bất ngờ.
-  "max_waste_percentage": 1.0,         // float, ngưỡng % hao hụt mỗi loại sắt (mặc định 1.0)
+  "max_waste_percentage": 1.0,         // float, ngưỡng % hao hụt MẶC ĐỊNH cho loại sắt không có
+                                        //   ngưỡng riêng bên dưới
+  "max_waste_percentage_by_material": {// object|omit, ngưỡng RIÊNG theo từng loại sắt, ghi đè
+    "sắt vuông 50×50": 2.0             //   max_waste_percentage. Khoá PHẢI khớp đúng giá trị
+  },                                    //   `material` (đã gộp whitespace) mà client gửi trong
+                                        //   bom[] — nếu client gửi materialId làm `material`
+                                        //   (khuyến nghị, spec để rỗng) thì khoá chính là
+                                        //   materialId đó. Khoá không khớp -> bỏ qua lặng lẽ,
+                                        //   dùng max_waste_percentage (xem
+                                        //   resolved_max_waste_pct_by_group trong response để
+                                        //   biết ngưỡng nào THỰC SỰ được áp). Value ngoài
+                                        //   khoảng (0, 100] cũng bị bỏ qua.
   "max_surplus": 10,                   // int, cho phép chênh lệch ± mỗi cỡ đoạn (mặc định 10)
   
   // Auto-scan (nếu chiều dài chuẩn không đạt ngưỡng)
@@ -1021,6 +1032,8 @@ Content-Type: application/json
 - `bom` không trống, mỗi row phải có `cut_length` và `material` (bỏ row rỗng/thiếu)
 - `stock_lengths` không trống, ≥ 100mm
 - `max_waste_percentage` ≥ 0
+- `max_waste_percentage_by_material` (nếu có): phải là object; entry nào key rỗng hoặc value
+  không phải số trong khoảng (0, 100] bị bỏ qua âm thầm (không lỗi 400)
 - `max_surplus` ≥ 0
 - `min_length` ≥ 100
 - `max_length` ≥ `min_length`
@@ -1187,6 +1200,13 @@ Content-Type: application/json
     "trim_start": 10,
     "blade_width": 1,                  // đã làm tròn lên (ceil) từ input gốc, luôn là số nguyên
     "max_waste_percentage": 1.0,
+    "max_waste_percentage_by_material": {"sắt vuông 50×50": 2.0}, // dict đã sanitize, đúng
+                                        //   nguyên bản client gửi (không phải giá trị đã áp)
+    "resolved_max_waste_pct_by_group": {"sắt vuông 50×50": 2.0, "sắt hộp 25×50": 1.0},
+                                        // ngưỡng THỰC SỰ áp cho từng loại (key/riêng hoặc mặc
+                                        //   định) - đây là chỗ duy nhất nên tin, không phải dict
+                                        //   ở trên (key sai vẫn hiện trong dict trên nhưng biến
+                                        //   mất khỏi dict này, rơi về giá trị mặc định)
     "max_surplus": 10,
     "min_length": 4000,
     "max_length": 12000,

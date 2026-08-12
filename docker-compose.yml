@@ -30,6 +30,9 @@ services:
       - DJANGO_SETTINGS_MODULE=iea_project.settings
       - REDIS_HOST=redis
       - DEBUG=True   # DEV: bật để KHÔNG cache template + hiện trang lỗi chi tiết
+      # PHẢI khớp SOLVER_API_KEY trong D:\DNA-ERP-BE\.env - BE gửi header
+      # "Authorization: Bearer <ERP_API_KEY>", sai/thiếu key này sẽ luôn 401 (fail-closed).
+      - ERP_API_KEY=dev-local-solver-key
     volumes:
       # DEV: mount toàn bộ source -> sửa file là thấy ngay, KHÔNG cần rebuild
       - .:/app
