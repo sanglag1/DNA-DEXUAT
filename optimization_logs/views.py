@@ -1,8 +1,6 @@
 from django.shortcuts import render
-from django.contrib.auth.decorators import login_required
 from .models import OptimizationLog
 
-@login_required
 def history_view(request):
     logs = OptimizationLog.objects.select_related('user').all()[:100]
     module = request.GET.get('module')

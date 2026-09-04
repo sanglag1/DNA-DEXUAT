@@ -6,7 +6,6 @@ Tính TUẦN TỰ từng loại sắt: mỗi loại -> 1 chiều dài tối ưu 
 import json
 from django.shortcuts import render
 from django.http import JsonResponse
-from django.contrib.auth.decorators import login_required
 
 from .de_xuat_logic import list_material_groups, optimize_one_material
 
@@ -148,7 +147,6 @@ def _parse_params(data):
     }
 
 
-@login_required
 def de_xuat_index(request):
     context = {
         # MOCK: danh mục sản phẩm để chọn (thật ra sẽ do ERP cấp). Bảng khởi tạo TRỐNG.
@@ -160,7 +158,6 @@ def de_xuat_index(request):
     return render(request, "cat_sat/de_xuat_index.html", context)
 
 
-@login_required
 def de_xuat_materials(request):
     """Bước 1: từ định mức -> danh sách các loại sắt (gom theo quy cách) để chạy tuần tự."""
     if request.method != "POST":
@@ -177,7 +174,6 @@ def de_xuat_materials(request):
         return JsonResponse({"status": "error", "message": f"Lỗi: {e}"}, status=500)
 
 
-@login_required
 def de_xuat_optimize_material(request):
     """Bước 2: tính đề xuất cho MỘT loại sắt (frontend gọi lần lượt từng loại)."""
     if request.method != "POST":

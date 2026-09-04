@@ -1,6 +1,5 @@
 from django.shortcuts import render
 from django.http import JsonResponse, HttpResponse
-from django.contrib.auth.decorators import login_required
 import json
 import logging
 from logging.handlers import RotatingFileHandler
@@ -51,12 +50,10 @@ class TeeStream:
     def flush(self):
         pass
 
-@login_required
 def index(request):
     form = OptimizationForm()
     return render(request, 'cat_sat/index.html', {'form': form})
 
-@login_required
 def optimize(request):
     if request.method == 'POST':
         original_stdout = sys.stdout
@@ -179,7 +176,6 @@ def optimize(request):
     return JsonResponse({"status": "error", "message": "Invalid request method"}, status=400)
 
 
-@login_required
 def export_excel_phase1(request):
     """Xuất kết quả GĐ 1 (danh sách patterns) ra file Excel."""
     if request.method != 'POST':

@@ -1,20 +1,20 @@
 # Cấu hình triển khai lên Render.com (Blueprint)
 #
 # Cách dùng: vào https://dashboard.render.com/blueprints -> New Blueprint Instance
-# -> chọn repo này. Render đọc file này và tự dựng 3 thành phần bên dưới.
+# -> chọn repo này. Render đọc file này và tự dựng 2 thành phần bên dưới.
 #
 # CẢNH BÁO VỀ GÓI MIỄN PHÍ (đọc kỹ trước khi dùng cho việc thật):
 #   - Web service ngủ sau 15 phút không ai truy cập, lần vào lại mất ~1 phút khởi động.
 #   - Chỉ 512MB RAM và CPU dùng chung -> phần TÍNH TOÁN TỐI ƯU sẽ chậm hơn nhiều lần
 #     so với chạy trên máy. BOM nhiều cỡ đoạn nhiều khả năng chạy không nổi.
 #     Dùng để DEMO giao diện và BOM nhỏ; việc thật nên dùng gói trả phí hoặc server riêng.
-#   - PostgreSQL gói free hết hạn sau một thời gian, Render sẽ báo trước qua email.
-
-databases:
-  - name: dna-dexuat-db
-    plan: free
-    databaseName: catsat
-    user: catsat
+#
+# KHÔNG có Postgres (2026-09-03): toàn bộ @login_required đã gỡ khỏi cat_sat/cat_laser_roi/
+# optimization_logs (accounts + admin Django không còn ai dùng), nên không còn lý do cần DB thật -
+# settings.py tự fallback sang SQLite cục bộ khi thiếu DB_HOST. LƯU Ý: SQLite này KHÔNG bền qua
+# redeploy/restart (Render không có ổ đĩa lâu dài ở gói free/service này) - chấp nhận được vì
+# OptimizationLog/cat_sat.Solution vốn chưa từng được code nào ghi vào (đã xác nhận qua audit,
+# 2 model này là "code chết"), và không còn ai cần đăng nhập để tồn tại qua các lần redeploy.
 
 services:
   # Redis — dùng cho Django Channels (WebSocket của màn MC Laser)
@@ -29,7 +29,7 @@ services:
     plan: free
     dockerfilePath: ./Dockerfile
     region: singapore        # gần Việt Nam nhất
-    healthCheckPath: /accounts/login/
+    healthCheckPath: /        # trước là /accounts/login/ - giờ không cần đăng nhập, redirect thẳng vào cat_laser_roi:index
     envVars:
       # Django tự sinh khoá bí mật, không cần điền tay
       - key: SECRET_KEY
@@ -51,28 +51,6 @@ services:
       # mọi request "Đề xuất cắt sắt" từ BE sẽ luôn nhận 401.
       - key: ERP_API_KEY
         sync: false
-
-      # --- PostgreSQL: lấy tự động từ database khai báo ở trên ---
-      - key: DB_HOST
-        fromDatabase:
-          name: dna-dexuat-db
-          property: host
-      - key: DB_PORT
-        fromDatabase:
-          name: dna-dexuat-db
-          property: port
-      - key: DB_NAME
-        fromDatabase:
-          name: dna-dexuat-db
-          property: database
-      - key: DB_USER
-        fromDatabase:
-          name: dna-dexuat-db
-          property: user
-      - key: DB_PASSWORD
-        fromDatabase:
-          name: dna-dexuat-db
-          property: password
 
       # --- Redis: Render trả về URL đầy đủ, settings.py đã hỗ trợ REDIS_URL ---
       - key: REDIS_URL
