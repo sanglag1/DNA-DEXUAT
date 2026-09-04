@@ -44,6 +44,13 @@ services:
       # CPU dùng chung -> ít luồng lại nhanh hơn nhiều luồng tranh nhau
       - key: SOLVER_WORKERS
         value: "2"
+      # Khoá xác thực request từ DNA-ERP-BE (api/views.py::require_api_key, fail-closed nếu rỗng).
+      # sync: false -> Render KHÔNG tự sinh, KHÔNG lưu vào file này - phải tự điền tay trong
+      # Dashboard > service này > Environment sau khi Blueprint tạo xong. PHẢI khớp 100% với
+      # SOLVER_API_KEY trong .env của DNA-ERP-BE (môi trường đang trỏ vào service này), nếu không
+      # mọi request "Đề xuất cắt sắt" từ BE sẽ luôn nhận 401.
+      - key: ERP_API_KEY
+        sync: false
 
       # --- PostgreSQL: lấy tự động từ database khai báo ở trên ---
       - key: DB_HOST
