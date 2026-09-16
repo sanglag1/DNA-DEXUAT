@@ -80,6 +80,32 @@ def _parse_max_waste_pct_by_material(raw):
     return out
 
 
+def _parse_stock_lengths_by_material(raw):
+    """
+    Sanitize `stock_lengths_by_material` từ request: materialId -> danh sách chiều dài cây (mm).
+
+    Nhận cùng 3 dạng như `stock_lengths` toàn cục cho đỡ phải nhớ 2 luật: số đơn (5850),
+    list ([5850, 6000]), hoặc chuỗi cách nhau bởi khoảng trắng/dấu phẩy ("5850 6000").
+
+    Giống `_parse_max_waste_pct_by_material`: KHÔNG fuzzy/prefix match khoá, entry sai định dạng
+    thì BỎ QUA và loại sắt đó rơi về `stock_lengths` chung - xem resolved_stock_lengths_by_group
+    trong input_echo để biết danh sách nào THỰC SỰ được áp cho từng loại.
+    """
+    if not isinstance(raw, dict):
+        return {}
+    out = {}
+    for k, v in raw.items():
+        parts = [str(x) for x in v] if isinstance(v, (list, tuple)) else str(v).replace(",", " ").split()
+        lengths = sorted({_to_float(x) for x in parts if str(x).strip()})
+        lengths = [L for L in lengths if L > 0]
+        if not lengths:
+            continue
+        key = _normalize_material_key(k)
+        if key:
+            out[key] = lengths
+    return out
+
+
 @csrf_exempt  # API không dùng session Django → bỏ CSRF check
 @require_http_methods(["POST"])
 @require_api_key
@@ -108,6 +134,11 @@ def api_de_xuat_propose(request):
       // trong input_echo để biết ngưỡng nào THỰC SỰ được áp cho từng loại).
       // Giá trị phải là số trong khoảng (0, 100]; ngoài khoảng đó bị bỏ qua.
       "max_waste_percentage_by_material": {"200": 2.0, "300": 0.8},
+      // Chiều dài cây RIÊNG cho từng loại sắt, ghi đè "stock_lengths" ở trên. Khoá khớp cùng
+      // cách như max_waste_percentage_by_material. Nhận số đơn / list / chuỗi. Khoá không khớp
+      // loại nào -> BỎ QUA lặng lẽ, loại đó dùng stock_lengths chung (xem
+      // resolved_stock_lengths_by_group trong input_echo để biết danh sách THỰC SỰ áp).
+      "stock_lengths_by_material": {"200": [5850], "300": "5850 6000"},
       "max_surplus": 10,
       "auto_scan": false,        // bật vét cạn dải chiều dài (CHẬM: cả trăm lần giải)
       "stop_on_first": false,    // chỉ có tác dụng khi auto_scan=true: dừng ở chiều dài
@@ -204,6 +235,11 @@ def api_de_xuat_propose(request):
         max_waste_pct_by_material = _parse_max_waste_pct_by_material(
             body.get("max_waste_percentage_by_material")
         )
+        # Chiều dài cây RIÊNG theo từng loại sắt (materialId -> [mm]), ghi đè stock_lengths cho
+        # đúng loại đó - xem docstring endpoint. Rỗng nếu client không gửi hoặc gửi sai định dạng.
+        stock_lengths_by_material = _parse_stock_lengths_by_material(
+            body.get("stock_lengths_by_material")
+        )
         max_surplus = max(0, _to_int(body.get("max_surplus", 10), 10))
         # Vét cạn dải chiều dài: TẮT mặc định (tốn thời gian nhất). stop_on_first chỉ
         # có tác dụng khi auto_scan bật.
@@ -224,6 +260,7 @@ def api_de_xuat_propose(request):
         # (đúng thuật toán production đang chạy trên UI de_xuat_index.html)
         results = []
         resolved_max_waste_pct_by_group = {}
+        resolved_stock_lengths_by_group = {}
         for group in material_groups:
             # Khoá group["material"] chính là chuỗi `material` client gửi trong bom[] (đã qua
             # cùng phép chuẩn hoá whitespace) - so khớp trực tiếp với khoá đã sanitize ở trên.
@@ -231,10 +268,17 @@ def api_de_xuat_propose(request):
                 _normalize_material_key(group["material"]), max_waste_pct
             )
             resolved_max_waste_pct_by_group[group["material"]] = group_max_waste_pct
+            # optimize_one_material() vốn đã nhận stock_lengths THEO TỪNG LỜI GỌI (bên trong còn
+            # "for L in sorted(set(stock_lengths))" để chọn cây tốt nhất) - nên chiều dài riêng
+            # theo quy cách chỉ là nối dây ở đây, KHÔNG sửa thuật toán.
+            group_stock_lengths = stock_lengths_by_material.get(
+                _normalize_material_key(group["material"]), stock_lengths
+            )
+            resolved_stock_lengths_by_group[group["material"]] = group_stock_lengths
             res = optimize_one_material(
                 sizes=group["sizes"],
                 demands=group["demands"],
-                stock_lengths=stock_lengths,
+                stock_lengths=group_stock_lengths,
                 trim=trim_start,
                 kerf=blade_width,
                 max_waste_pct=group_max_waste_pct,
@@ -388,6 +432,8 @@ def api_de_xuat_propose(request):
                 # năng không hoạt động.
                 "max_waste_percentage_by_material": max_waste_pct_by_material,
                 "resolved_max_waste_pct_by_group": resolved_max_waste_pct_by_group,
+                "stock_lengths_by_material": stock_lengths_by_material,
+                "resolved_stock_lengths_by_group": resolved_stock_lengths_by_group,
                 "max_surplus": max_surplus,
                 "min_length": min_len,
                 "max_length": max_len,
