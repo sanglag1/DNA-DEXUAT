@@ -33,6 +33,13 @@ services:
       # PHẢI khớp SOLVER_API_KEY trong D:\DNA-ERP-BE\.env - BE gửi header
       # "Authorization: Bearer <ERP_API_KEY>", sai/thiếu key này sẽ luôn 401 (fail-closed).
       - ERP_API_KEY=dev-local-solver-key
+      # 2026-09-23: máy dev chạy CÙNG LÚC nhiều container khác (postgres x3, redis, pgadmin) +
+      # BE/FE dev server + editor - CPU tranh chấp thật dù máy có 12 core. Mặc định 8 luồng CP-SAT
+      # (de_xuat_logic.py::SOLVER_WORKERS) từng gây timeout giả (CPU 800%+ nhưng vẫn hết giờ ở
+      # 6000mm - xác nhận qua timeout_count/timeout_lengths trong response thật) - đúng ca chính
+      # comment trong code đã cảnh báo ("CPU dùng chung... đặt SOLVER_WORKERS=2"). Hạ xuống 4 để
+      # thử nghiệm, không hạ hẳn 2 vì máy vẫn có 12 core thật (khác PaaS free-tier 1-2 vCPU).
+      - SOLVER_WORKERS=4
     volumes:
       # DEV: mount toàn bộ source -> sửa file là thấy ngay, KHÔNG cần rebuild
       - .:/app

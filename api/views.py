@@ -5,6 +5,7 @@ Tất cả endpoint đều trả JSON, không giữ state.
 import hmac
 import json
 import re
+import time
 from functools import wraps
 
 from django.conf import settings
@@ -275,6 +276,10 @@ def api_de_xuat_propose(request):
                 _normalize_material_key(group["material"]), stock_lengths
             )
             resolved_stock_lengths_by_group[group["material"]] = group_stock_lengths
+            # Đo thời gian giải THẬT của riêng loại sắt này (không tính bước bung BOM/dựng
+            # response) - ERP dùng để hiện "đang tính X giây" theo từng dòng lúc bấm vào chi
+            # tiết, thay vì chỉ có tổng thời gian cả request (2026-09-22, yêu cầu tích hợp ERP).
+            started_at = time.perf_counter()
             res = optimize_one_material(
                 sizes=group["sizes"],
                 demands=group["demands"],
@@ -291,6 +296,7 @@ def api_de_xuat_propose(request):
                 stop_on_first=stop_on_first,
             )
             res["material"] = group["material"]  # optimize_one_material không tự gắn tên loại
+            res["solve_seconds"] = round(time.perf_counter() - started_at, 2)
             results.append(res)
 
         # ===== Build response =====
@@ -319,6 +325,7 @@ def api_de_xuat_propose(request):
                     "max_waste_pct_threshold": resolved_max_waste_pct_by_group.get(
                         res.get("material", "")
                     ),
+                    "solve_seconds": res.get("solve_seconds", 0),
                 })
                 continue
 
@@ -341,6 +348,7 @@ def api_de_xuat_propose(request):
                 # > 0 nghĩa là còn chiều dài chưa chấm xong -> phương án CHƯA chắc tối ưu.
                 "timeout_count": res.get("timeout_count", 0),
                 "timeout_lengths": res.get("timeout_lengths", []),
+                "solve_seconds": res.get("solve_seconds", 0),
             }
 
             # Chi tiết cỡ đoạn (demand vs produced)
@@ -405,6 +413,10 @@ def api_de_xuat_propose(request):
         summary = {
             "num_sets": num_sets,
             "num_material_groups": len([r for r in results if r.get("feasible")]),
+            # Tổng thời gian giải THẬT cộng dồn mọi loại sắt (KHÔNG tính bước bung BOM/dựng
+            # response, cũng KHÔNG tính network) - ERP hiện ở mức tổng quan (ngoài danh sách),
+            # tách bạch với solve_seconds riêng từng dòng (2026-09-22).
+            "total_solve_seconds": round(sum(r.get("solve_seconds", 0) for r in results), 2),
             "total_bars_all": total_bars_all,
             "total_purchased_mm": total_purchased_mm,
             "total_waste_mm": total_waste_mm,
