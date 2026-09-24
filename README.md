@@ -43,7 +43,6 @@ Ba module dùng chung Django project và thư viện OR-Tools, nhưng **logic t�
 
 ### Một số cơ chế đáng chú ý
 
-- **Mẩu nguyên** — cây cuối cắt dở, phần còn lại để nguyên nhập kho thay vì cắt nốt thành đoạn thừa. Sắt đã cắt không nối lại được, để nguyên là giữ quyền lựa chọn cho đơn sau.
 - **Giới hạn 4 cỡ đoạn/cây** — vừa tăng tốc giải, vừa dễ thực thi ở xưởng. Đã kiểm chứng không làm mất nghiệm tối ưu trên BOM thật.
 - **Chuẩn hoá quy cách** — `10*20`, `10X20`, `10 × 20` quy về `10x20` để không tách nhầm thành nhiều lô mua.
 - **Tách bạch hết giờ với vô nghiệm** — solver hết thời gian và bài toán thật sự không có lời giải là hai việc khác nhau, không gộp chung.

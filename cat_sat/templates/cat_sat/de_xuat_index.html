@@ -319,7 +319,7 @@
                 <div id="dx-total" class="alert alert-secondary py-2 mb-3"></div>
                 <div id="dx-detail"></div>`;
 
-            let totalMm = 0, totalWaste = 0, totalStub = 0;
+            let totalMm = 0, totalWaste = 0;
             const tRunStart = performance.now();   // mốc đo tổng thời gian cả đơn
 
             // Đồng hồ chạy liên tục trong lúc chờ. Trước đây chỉ ghi thời gian tại
@@ -368,18 +368,15 @@
                     `<span class="${wCls}">${r.waste_pct.toFixed(2)}%${r.over_waste ? ' ⚠' : ''}</span>`,
                     fmtDur(matSec));
 
-                // cộng dồn tổng (khúc thừa = phế liệu, KHÔNG tính đoạn dư & mẩu nguyên)
+                // cộng dồn tổng (khúc thừa = phế liệu, KHÔNG tính đoạn dư)
                 totalMm += (r.total_purchased_mm || r.best_length * r.total_bars);
                 totalWaste += (r.total_waste_mm || 0);
-                totalStub += (r.mau_nguyen_mm || 0);
                 const buyM = (totalMm / 1000).toLocaleString('vi-VN', { maximumFractionDigits: 1 });
                 const wasteM = (totalWaste / 1000).toLocaleString('vi-VN', { maximumFractionDigits: 2 });
-                const stubM = (totalStub / 1000).toLocaleString('vi-VN', { maximumFractionDigits: 2 });
                 document.getElementById('dx-total').innerHTML =
                     `<b>Tổng sắt mua:</b> ${buyM} m · ` +
                     `<b>Tổng khúc thừa (phế liệu):</b> ${wasteM} m ` +
                     `(${totalMm ? (totalWaste / totalMm * 100).toFixed(2) : 0}%)` +
-                    (totalStub ? ` · <b class="text-success">Mẩu nguyên nhập kho:</b> ${stubM} m` : '') +
                     ` · <b>⏱ Thời gian tính:</b> ${fmtDur((performance.now() - tRunStart) / 1000)}`;
 
                 // chi tiết loại này
@@ -421,8 +418,7 @@
             <span class="badge bg-secondary">${srcLabel}</span>
             ${matSec !== undefined ? `<span class="badge bg-light text-dark border">⏱ ${fmtDur(matSec)}</span>` : ''}
             <div class="small text-muted">Tổng khúc thừa (phế liệu): <b>${fmt(Math.round(r.total_waste_mm || 0))} mm</b>
-                · Đoạn dư đã cắt: <b>${r.total_surplus_pieces || 0}</b> đoạn
-                ${r.mau_nguyen_mm ? `· <span class="text-success">Mẩu nguyên chưa cắt: <b>${fmt(Math.round(r.mau_nguyen_mm))} mm</b></span>` : ''}</div>`;
+                · Đoạn dư đã cắt: <b>${r.total_surplus_pieces || 0}</b> đoạn</div>`;
 
         // Vượt ngưỡng mà chưa bật vét cạn -> chỉ cho người dùng biết còn cách cải thiện.
         if (r.over_waste && !r.auto_scan) {
@@ -469,16 +465,9 @@
         for (const cl of r.cut_lengths) html += `<th>${cl}</th>`;
         html += `<th>Số cây</th><th>HH/cây</th></tr></thead><tbody>`;
         for (const pl of r.plan) {
-            // Cây cắt dở: tô xanh + ghi rõ mẩu nguyên để thợ biết dừng tay, không cắt hết.
-            const mn = pl.mau_nguyen_mm;
-            html += `<tr class="${mn ? 'table-success' : ''}"><td>${pl.stock_length}mm</td>`;
+            html += `<tr><td>${pl.stock_length}mm</td>`;
             for (let k = 0; k < r.cut_lengths.length; k++) html += `<td>${pl.counts[k] > 0 ? pl.counts[k] : ''}</td>`;
             html += `<td class="fw-bold">${pl.bars}</td><td>${pl.waste_per_bar}</td></tr>`;
-            if (mn) {
-                html += `<tr class="table-success"><td colspan="${r.cut_lengths.length + 3}"
-                    class="small text-start fst-italic">↳ Cây này <b>cắt dở</b> — dừng sau ${pl.counts.reduce((a, b) => a + b, 0)} đoạn,
-                    phần còn lại <b>${fmt(Math.round(mn))} mm</b> để nguyên, nhập kho (cắt được cỡ bất kỳ).</td></tr>`;
-            }
         }
         html += `</tbody></table></div></div>`;
         return html;

@@ -55,8 +55,17 @@ SOLUTION_LIMIT = 100000
 MAX_SIZES_PER_BAR = 4
 
 # Ngân sách thời gian riêng cho khâu LIỆT KÊ pattern (tách khỏi thời gian giải IP).
-# Liệt kê thêm gần như không cải thiện nghiệm, nên không đáng để nó ăn cả phút.
-ENUM_TIME_LIMIT = 30.0
+# 90s (2026-09-24, tăng từ 30s): đo thật cho thấy loại sắt nhiều cỡ đoạn (segment_spec
+# thật: SAT-HOP-10X20 có 15 cỡ, SAT-VUONG-20X20 có 12 cỡ) vẫn có thể chưa liệt kê xong ở
+# 30s (mốc "9-10 cỡ -> hàng giờ" ở comment trên) -> patterns_truncated=True, nghiệm trả
+# về khi đó chỉ tối ưu trên tập BỊ CẮT CỤT dù vẫn báo feasible=True. Nâng lên 90s giúp đa
+# số loại sắt thật (<=8 cỡ, xem bảng đo) liệt kê xong trọn vẹn mà không tốn quá nhiều -
+# chạy NỀN sau khi Sếp duyệt nên không ai phải chờ. Không nâng cao hơn/bỏ hẳn giới hạn:
+# bài toán tăng theo cấp số nhân (~x5/cỡ đoạn thêm vào) nên không có mốc nào đủ cho MỌI
+# trường hợp - 2 loại "khủng" trên vẫn có thể vượt 90s, đó là lý do patterns_truncated
+# phải được ĐẨY LÊN tới BE/FE cảnh báo (chưa làm, xem TODO/changelog) thay vì chỉ trông
+# chờ vào việc nâng số này.
+ENUM_TIME_LIMIT = 90.0
 
 # Số luồng cho bộ giải. Mặc định 8 (hợp với máy/server nhiều nhân), nhưng trên máy chủ
 # CPU dùng chung (vd gói free của PaaS) thì 8 luồng tranh nhau còn CHẬM hơn ít luồng —
@@ -91,65 +100,6 @@ def normalize_spec(spec):
         s = s.replace(ch, "x")
     s = _SEP_RE.sub("x", s)           # '10 x 20' -> '10x20'
     return re.sub(r"\s+", " ", s)
-
-
-def _giu_lai_mau_nguyen(plan, cuts_s, produced, demands, trim_s, kerf_s):
-    """
-    Biến ĐOẠN DƯ ĐÃ CẮT thành MẨU SẮT NGUYÊN chưa cắt.
-
-    Vì sao cần: nhu cầu hiếm khi chia hết cho số đoạn mỗi cây, nên cây cuối luôn cắt
-    thừa vài đoạn (vd cần 2.000 đoạn 660mm, mỗi cây 9 đoạn -> mua 223 cây, ra 2.007
-    đoạn, DƯ 7). Bảy đoạn đó là sắt tốt nhưng đã bị cắt cứng thành 660mm, chỉ dùng
-    được cho đơn nào cần đúng cỡ ấy.
-
-    Thay vì cắt nốt, ta cắt cây cuối ÍT LẠI đúng bằng phần thừa, để lại một khúc dài
-    còn nguyên (vd 4.668mm) — khúc này cắt được cỡ bất kỳ. Sắt cắt rồi không nối lại
-    được, nên để nguyên là giữ lại quyền lựa chọn cho đơn sau.
-
-    KHÔNG đổi số cây phải mua và KHÔNG đổi số đoạn giao cho khách — chỉ đổi hình dạng
-    phần sắt còn lại. Chạy sau khi đã giải xong nên không ảnh hưởng tốc độ.
-
-    Trả về (plan_moi, mau_nguyen_s, bu_tru_phe_lieu_s, produced_moi) — đơn vị đã scale.
-    """
-    n = len(cuts_s)
-    surplus = [produced[k] - demands[k] for k in range(n)]
-    if sum(surplus) <= 0 or not plan:
-        return plan, 0, 0, produced
-
-    # Chọn cây bỏ được NHIỀU SẮT NHẤT ra khỏi lưỡi cưa -> mẩu nguyên dài nhất.
-    best_i, best_bo, best_giam = None, None, -1
-    for i, row in enumerate(plan):
-        bo = [min(row["counts"][k], surplus[k]) for k in range(n)]
-        giam = sum(bo[k] * (cuts_s[k] + kerf_s) for k in range(n))
-        if giam > best_giam:
-            best_i, best_bo, best_giam = i, bo, giam
-    if best_giam <= 0:
-        return plan, 0, 0, produced
-
-    row = plan[best_i]
-    counts_moi = tuple(row["counts"][k] - best_bo[k] for k in range(n))
-    S_s = _scale(row["stock_length"])
-    dung = sum(counts_moi[k] * (cuts_s[k] + kerf_s) for k in range(n))
-    mau_s = S_s - trim_s - dung                      # khúc còn nguyên, KHÔNG phải phế liệu
-    if mau_s <= 0:
-        return plan, 0, 0, produced
-
-    # Cây cắt dở giờ chỉ mất phần tề đầu, thay vì cả khúc thừa đuôi như trước.
-    bu_tru_s = _scale(row["waste_per_bar"]) - trim_s
-
-    plan_moi = [dict(r) for r in plan]
-    plan_moi[best_i]["bars"] -= 1
-    if plan_moi[best_i]["bars"] <= 0:
-        plan_moi.pop(best_i)
-    plan_moi.append({
-        "stock_length": row["stock_length"],
-        "counts": counts_moi,
-        "bars": 1,
-        "waste_per_bar": trim_s / SCALING_FACTOR,
-        "mau_nguyen_mm": mau_s / SCALING_FACTOR,     # cây này cắt DỞ, để lại mẩu nguyên
-    })
-    produced_moi = [produced[k] - best_bo[k] for k in range(n)]
-    return plan_moi, mau_s, bu_tru_s, produced_moi
 
 
 def _unsolved(status, time_limit, max_surplus):
@@ -443,12 +393,6 @@ def optimize_material(cut_lengths, demands, stock_lengths, trim, kerf,
 
     total_used_s = sum(demands[k] * _scale(cut_lengths[k]) for k in range(n))
 
-    # Cây cuối: thay vì cắt nốt mấy đoạn không ai cần, để nguyên khúc dài đem nhập kho.
-    cuts_s = [_scale(c) for c in cut_lengths]
-    plan, mau_nguyen_s, bu_tru_s, produced = _giu_lai_mau_nguyen(
-        plan, cuts_s, produced, demands, _scale(trim), _scale(kerf))
-    total_leftover_s -= bu_tru_s
-
     total_surplus_pieces = int(sum(produced[k] - demands[k] for k in range(n)))
     plan.sort(key=lambda r: (r["stock_length"], -r["bars"]))
 
@@ -463,9 +407,6 @@ def optimize_material(cut_lengths, demands, stock_lengths, trim, kerf,
         "total_used_mm": total_used_s / SCALING_FACTOR,
         "total_waste_mm": total_leftover_s / SCALING_FACTOR,   # hao hụt = phế liệu cắt (leftover)
         "total_surplus_pieces": total_surplus_pieces,          # đoạn ĐÃ CẮT còn dư
-        # Khúc sắt còn NGUYÊN (chưa cắt) từ cây cuối — nhập kho, cắt được cỡ bất kỳ.
-        # Khác hẳn phế liệu (vụn bỏ đi) và đoạn dư (đã cắt cứng một kích thước).
-        "mau_nguyen_mm": mau_nguyen_s / SCALING_FACTOR,
         "waste_pct": (total_leftover_s / total_purchased_s * 100) if total_purchased_s else 0,
         "plan": plan,
         # True = chưa liệt kê hết kiểu cắt -> nghiệm này tối ưu trên TẬP BỊ CẮT CỤT,
@@ -646,7 +587,6 @@ def optimize_one_material(sizes, demands, stock_lengths, trim, kerf, max_waste_p
         "total_waste_mm": res.get("total_waste_mm", 0),          # tổng khúc thừa (phế liệu) mm
         "total_purchased_mm": res.get("total_purchased_mm", 0),
         "total_surplus_pieces": res.get("total_surplus_pieces", 0),
-        "mau_nguyen_mm": res.get("mau_nguyen_mm", 0),   # khúc sắt còn nguyên -> nhập kho
         "over_waste": res["waste_pct"] > threshold + 1e-9,
         "max_waste_pct": max_waste_pct,
         # Số chiều dài bị bỏ qua vì hết giờ — nếu > 0 thì kết quả trên CHƯA chắc tối ưu.

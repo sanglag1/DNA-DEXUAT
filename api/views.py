@@ -340,9 +340,6 @@ def api_de_xuat_propose(request):
                 "total_waste_mm": res.get("total_waste_mm", 0),
                 "waste_percentage": round(res.get("waste_pct", 0), 4),
                 "total_surplus_pieces": res.get("total_surplus_pieces", 0),
-                # Khúc sắt còn NGUYÊN (chưa cắt) từ cây cuối -> nhập kho, cắt được cỡ
-                # bất kỳ. KHÔNG phải phế liệu, cũng không phải đoạn dư đã cắt.
-                "mau_nguyen_mm": res.get("mau_nguyen_mm", 0),
                 "over_threshold": res.get("over_waste", False),
                 "max_waste_pct_threshold": res.get("max_waste_pct", max_waste_pct),
                 # > 0 nghĩa là còn chiều dài chưa chấm xong -> phương án CHƯA chắc tối ưu.
@@ -374,8 +371,6 @@ def api_de_xuat_propose(request):
                     "counts": list(plan_row.get("counts", [])),
                     "bars": plan_row.get("bars", 0),
                     "waste_per_bar": plan_row.get("waste_per_bar", 0),
-                    # > 0 nghĩa là cây này CẮT DỞ: dừng sớm, phần còn lại để nguyên.
-                    "mau_nguyen_mm": plan_row.get("mau_nguyen_mm", 0),
                     "pieces_breakdown": [
                         {"size": cut_lengths[j], "count": plan_row.get("counts", [])[j]}
                         for j in range(len(cut_lengths))

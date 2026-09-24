@@ -33,7 +33,6 @@ def _feasible_result(waste_pct=0.5):
         "total_waste_mm": 100,
         "total_purchased_mm": 72000,
         "total_surplus_pieces": 0,
-        "mau_nguyen_mm": 0,
         "over_waste": False,
         "max_waste_pct": waste_pct,
         "timeout_count": 0,
