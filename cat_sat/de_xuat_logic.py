@@ -486,6 +486,10 @@ def list_material_groups(bom_rows, num_sets):
     return out
 
 
+# Hệ số nhân time_limit cho các lần giải lại chiều dài chuẩn khi lần đầu hết giờ (xem bước 1b).
+FIXED_RETRY_FACTORS = (3, 6)
+
+
 def optimize_one_material(sizes, demands, stock_lengths, trim, kerf, max_waste_pct,
                           min_len, max_len, step, time_limit_sec=8.0, max_surplus=10,
                           auto_scan=False, stop_on_first=False):
@@ -527,6 +531,26 @@ def optimize_one_material(sizes, demands, stock_lengths, trim, kerf, max_waste_p
                                 "waste_pct": r["waste_pct"], "result": r})
         elif r.get("timed_out"):
             timeouts.append(L)
+    # 1b) Hết giờ KHÔNG phải vô nghiệm: chiều dài chuẩn nào mới chỉ "chưa kết luận" thì giải lại với
+    #     giới hạn dài hơn (nhân FIXED_RETRY_FACTORS) TRƯỚC khi coi như không đạt và chuyển sang vét cạn
+    #     chiều dài riêng (vừa nặng, vừa cho phương án nhiều cây hơn). Vô nghiệm THẬT (đã chứng minh) thì
+    #     vẫn đi thẳng sang vét cạn như cũ.
+    if not fixed_evals and timeouts:
+        for factor in FIXED_RETRY_FACTORS:
+            still = []
+            for L in timeouts:
+                r = optimize_material(sizes, demands, [L], trim, kerf,
+                                      max_waste_ratio=strict_ratio,
+                                      time_limit=time_limit_sec * factor,
+                                      max_surplus=max_surplus)
+                if r.get("feasible"):
+                    fixed_evals.append({"length": L, "bars": r["total_bars"],
+                                        "waste_pct": r["waste_pct"], "result": r})
+                elif r.get("timed_out"):
+                    still.append(L)
+            timeouts = still
+            if fixed_evals or not timeouts:
+                break
     fixed_evals.sort(key=lambda e: e["waste_pct"])
     best_fixed = fixed_evals[0] if fixed_evals else None
 
